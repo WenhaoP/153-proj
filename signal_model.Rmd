@@ -1,0 +1,67 @@
+---
+title: "WP_proj"
+author: "Wenhao Pan"
+date: "11/5/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+# load packages
+library(astsa)
+library(TSA)
+library(ggplot2)
+```
+
+```{r}
+# clean data
+stock = read.csv("data/TSLA.csv")
+stock$Date = as.Date(stock$Date)
+head(stock)
+n = 300
+T = 1:n
+
+stock_sample = tail(stock, n)
+stock_sample = stock_sample[c('Date','Close')]
+stock_sample$T = 1:n
+stock_sample.close.ts = ts(stock_sample$Close)
+head(stock_sample)
+```
+
+```{r}
+plot(T, log(stock_sample$Close), type = 'l')
+stock_sample$log_close = log(stock_sample$Close)
+
+# exponential filter 
+filter_weights = 0.8^(1:10)
+filter_weights = filter_weights/sum(filter_weights)
+filtered_stock = filter(as.vector(stock_sample$log_close), filter_weights, sides = 1)
+
+plot(T, stock_sample$log_close, type = 'l')
+lines(T, filtered_stock, col = 'red')
+
+filtered_stock = na.omit(filtered_stock)
+log_stock = stock_sample$log_close[-1:-9]
+res = log_stock - filtered_stock
+plot(res)
+acf2(res)
+
+# (seasonal) differencing
+diff_res = diff(res, lag = 10)
+plot(diff_res)
+acf2(diff_res)
+```
+
+
+```{r}
+# Group by mean
+stock_month = stock %>%
+  mutate(year = format(Date, "%Y"), month = format(Date, "%m")) %>%
+  group_by(year, month) %>%
+  summarise(average = mean(Close))
+```
+
