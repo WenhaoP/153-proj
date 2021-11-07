@@ -1,0 +1,76 @@
+---
+title: 'isotonic trend and differencing'
+author: "Rita Zhang"
+date: "11/6/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Install packages
+library(astsa)
+```
+
+```{r}
+# Limit data to 300 time points
+n = 300
+time = 1:n
+tesla = read.csv("../Desktop/TSLA.csv")
+tesla$Date = as.Date(tesla$Date)
+
+# And we are only interested in the close price
+data = tail(tesla, n)[c('Date', 'Close')]
+```
+
+```{r}
+# Visualize the data
+plot(time, data$Close, type = 'l')
+```
+
+```{r}
+# Apply log-transformation
+data$Log_Close = log(data$Close)
+
+# Visualize the log-transformed data
+plot(time, data$Log_Close, type = 'l')
+```
+
+```{r}
+#Isotonic trend estimation
+model = isoreg(time, data$Log_Close)
+```
+
+```{r}
+#Plot of the original transformed data along with the corresponding trend estimate
+plot(time, data$Log_Close, type ='l')
+lines(model$x, model$yf, col = 'lightgreen', lwd = 2)
+```
+
+```{r}
+#Residuals from isotonic regression
+model.res = model$y - model$yf
+plot(model$x, model.res, type = "l") 
+```
+
+```{r}
+#Acf of the isotonic residuals
+acf(model.res, lag.max = 200, type = "correlation", plot = T, main = "Correlogram of the residuals after Isotonic Trend Fit")
+```
+
+```{r}
+acf2(model.res)
+```
+
+```{r}
+#Differencing
+diff_residuals = diff(model.res)
+plot.ts(diff_residuals)
+```
+
+```{r}
+acf2(diff_residuals)
+```
+
