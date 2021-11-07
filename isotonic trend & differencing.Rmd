@@ -39,24 +39,24 @@ plot(time, data$Log_Close, type = 'l')
 ```
 
 ```{r}
-#Isotonic trend estimation
+# Isotonic trend estimation
 model = isoreg(time, data$Log_Close)
 ```
 
 ```{r}
-#Plot of the original transformed data along with the corresponding trend estimate
+# Plot of the original transformed data along with the corresponding trend estimate
 plot(time, data$Log_Close, type ='l')
 lines(model$x, model$yf, col = 'lightgreen', lwd = 2)
 ```
 
 ```{r}
-#Residuals from isotonic regression
+# Residuals from isotonic regression
 model.res = model$y - model$yf
 plot(model$x, model.res, type = "l") 
 ```
 
 ```{r}
-#Acf of the isotonic residuals
+# Acf of the isotonic residuals
 acf(model.res, lag.max = 200, type = "correlation", plot = T, main = "Correlogram of the residuals after Isotonic Trend Fit")
 ```
 
@@ -65,7 +65,7 @@ acf2(model.res)
 ```
 
 ```{r}
-#Differencing
+# Differencing
 diff_residuals = diff(model.res)
 plot.ts(diff_residuals)
 ```
