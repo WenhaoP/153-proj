@@ -7,22 +7,29 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
+## Exploration on data
+```{r}
+t = 1:300
+data <- read.csv("data/TSLA.csv")
+open <- data$Open
+close <- data$Adj.Close
+close_tail = tail(close, 300)
+plot.ts(close_tail)
+log_data = log(close_tail)
+plot.ts(log_data)
 ```
 
-## Including Plots
+## try1: linear model + differencing
+linear mode, differencing with lag=5, second order differencing with lag 1
 
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r}
+lm <- lm(log_data ~ t)
+res <- resid(lm)
+plot.ts(res)
+diff = diff(res, lag=5)
+second_diff = diff(diff, lag = 1)
+plot.ts(second_diff)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+## try2: polynomial model + differencing
+
