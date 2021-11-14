@@ -19,7 +19,8 @@ knitr::opts_chunk$set(
   message = FALSE, # don't show messages (less serious warnings)
   cache = FALSE, # set to TRUE to save results from last compilation
   fig.align = "center", # center figures
-  fig.height = 3
+  fig.height = 3,
+  out.width = "75%"
 )
 library(ggplot2)
 library(patchwork)
@@ -45,89 +46,101 @@ t = 1:n
 stock_300 = tail(stock, n)
 stock_300 = stock_300[c('Date','Close')]
 stock_300$t = t
-stock_300.close.ts = ts(stock_300$Close)
 ```
 
 # Exploratory Data Analysis
 
-To obtain a comprehensive understanding of the data, we conduct explanatory data analysis (EDA) first. Figure 1(a) is the time series plot of all the given time points. We observe that the average price of Tesla before 2020 is considerably lower than that after 2020. Also, the stock price before 2020 seems to have a constant trend and no seasonality. Moreover, due to the excessive number of time points, it is difficult to visually examine the trend and seasonality pattern for data after 2020. Therefore, for the sake of interest and convenience, we decide to only analyze the last 300 time points, which cover the period from `2020-08-26` to `2021-11-02` excluding weekends.
+To obtain a comprehensive understanding of the data, we conduct explanatory data analysis (EDA) first. Figure 1(a) is the time series plot of all the given time points. We observe that the average price of Tesla before 2020 is considerably lower than that after 2020. Also, the stock price before 2020 seems to have a constant trend and no seasonality. Moreover, due to the excessive number of time points, it is difficult to visually examine the trend and seasonality pattern for data after 2020. Therefore, for the sake of interest and convenience, we decide to only analyze the last 300 time points, which cover the period from `2020-08-26` to `2021-11-02` excluding weekends. Thus, whenever we mention "data" in the following analysis, we implicitly mean the last 300 time points. 
 
-```{r, fig.cap="(a) Time series plot of all available trading days. (b) Time series plot of last 300 trading days"}
+```{r, fig.cap="(a) Time series plot of all available trading days. (b) Time series plot of last 300 trading days", fig.height=6}
 # Line plot of all the data
 full_data <- ggplot(data = stock, aes(x = Date, y = Close)) +
   geom_line() +
+  ylab("Close Price (Dollars)") +
   ggtitle("(a)")
 # Line plot of last 300 data
 last_300 <- ggplot(data = stock_300, aes(x = Date, y = Close)) +
   geom_line() +
+  ylab("Close Price (Dollars)") +
   ggtitle("(b)")
 
-full_data + last_300
+full_data / last_300
 ```
-Figure 1(b) is the time series plot of the close prices of Tesla in last three hundred trading days before and including `2021-11-02`. We first observe slight heteroskedasticity in Figure 1(b), so we experiment with square root and natural log transformation.
+Figure 1(b) is the time series plot of the close prices of Tesla in last three hundred trading days before and including `2021-11-02`. We first observe that our data is roughly homoscedastic based on Figure 1(b), so we do not need to transform the data to stabilize the variance of the data.
 
 ```{r, fig.cap="(a) Time series plot of all available trading days. (b) Time series plot of last 300 trading days"}
-# Line plot of last 300 data with square root transformation
-last_300_sqrt <- ggplot(data = stock_300, aes(x = Date, y = Close)) +
-  geom_line() +
-  scale_y_sqrt() +
-  ggtitle("(a)")
-
-# Line plot of last 300 data with natural log transformation
-last_300_log <- ggplot(data = stock_300, aes(x = Date, y = Close)) +
-  geom_line() +
-  scale_y_log10() +
-  ggtitle("(b)")
-
-last_300_sqrt + last_300_log
-```
-```{r, fig.cap="(a) Time series plot of all available trading days. (b) Time series plot of last 300 trading days"}
-par(mfrow = c(1, 2))
-
-# Line plot of last 300 data with square root transformation
-stock_300$sqrt_close = sqrt(stock_300$Close)
-last_300_sqrt <- plot(t, stock_300$sqrt_close, type = 'l', xlab = 'Day')
-
-# Line plot of last 300 data with natural log transformation
-stock_300$log_close = log(stock_300$Close)
-last_300_log <- plot(t, stock_300$log_close, type = 'l', xlab = 'Day')
-```
-Intuitively, the (transformed) data is not stationary since there exists a nonlinear trend and possible seasonality. To be more concrete, we plot the sample ACF and PACF of the (transformed) data.
-
-```{r, fig.cap="TODO", results='hide'}
-acf2(stock_300$log_close, max.lag = 50)
+# # Line plot of last 300 data with square root transformation
+# last_300_sqrt <- ggplot(data = stock_300, aes(x = Date, y = Close)) +
+#   geom_line() +
+#   scale_y_sqrt() +
+#   ggtitle("(a)")
+# 
+# # Line plot of last 300 data with natural log transformation
+# last_300_log <- ggplot(data = stock_300, aes(x = Date, y = Close)) +
+#   geom_line() +
+#   scale_y_log10() +
+#   ggtitle("(b)")
+# 
+# 
+# last_300
+# last_300_sqrt
+# last_300_log
+# ```
+# ```{r, fig.cap="(a) Time series plot of all available trading days. (b) Time series plot of last 300 trading days"}
+# par(mfrow = c(1, 2))
+# 
+# # Line plot of last 300 data with square root transformation
+# stock_300$sqrt_close = sqrt(stock_300$Close)
+# last_300_sqrt <- plot(t, stock_300$sqrt_close, type = 'l', xlab = 'Day')
+# 
+# # Line plot of last 300 data with natural log transformation
+# stock_300$log_close = log(stock_300$Close)
+# last_300_log <- plot(t, stock_300$log_close, type = 'l', xlab = 'Day')
 ```
 
-COMMENT TODO. (Decaying ACF -> trend) Next, to verify our superposition that the data does not have a strong seasonality pattern, we use the periodogram.
+Intuitively, the data is not stationary since there exists a nonlinear trend. We do not observe a clear seasonality pattern probably because the data is daily. To be more convincing, we plot the sample ACF and PACF of the data in Figure 2.
 
-```{r}
-periodogram(stock_300$log_close)
+```{r, fig.cap="Sample ACF and PACF plots of the data", results='hide'}
+acf2(stock_300$Close, max.lag = 50, main = "Close Price of Tesla")
 ```
-As we see multiple consecutive spikes, which is called "leakage", we confirm that there is not a dominant seasonality pattern in our data.
+
+The decaying, positive ACF's imply a possible trend. As we expect, both sample ACF and PACF plots do not demonstrate a seasonality pattern. To quantitatively verify our superposition that the data does not have a strong seasonality pattern, we plot and inspect the periodogram of the data.
+
+```{r, fig.cap="The periodogram of the data"}
+periodogram(stock_300$Close)
+```
+Since the periodogram has multiple consecutive spikes, the phenomenon called "leakage", the data does not have a dominant seasonality pattern or frequency in our data. Nonetheless, TODO
 
 # Model Construction
 
-With a comprehensive understanding of our data, we start to experiment and construct different time series model. We first stabilize the variance of our data. Then, we choose and build two non-parametric signal models to remove any trend or seasonality from the data so that the residuals are approximately weekly stationary. We do not consider any parametric method for modeling trend because we think the trend of the stock price data is too complicated to be modeled by a parametric model, such as a high-order polynomial. We could use a 15 or 20 order polynomial, but it will overfit the training data and give inprecise predictions. Finally, based on each signal model, we provide two ARMA models or its extension, such as SARMA or ARIMA, to whiten the residuals of the signal model. Thus, we have four candidate models, and we will explain how we select a final model in the next section.
+With a comprehensive understanding of our data, we start to experiment and construct different time series model. We choose and build two non-parametric trend models. Since we  to remove any trend or seasonality from the data so that the residuals are approximately weekly stationary. We do not consider any parametric method for modeling trend because we think the trend of the stock price data is too complicated to be modeled by a parametric model, such as a high-order polynomial. We could use a 15 or 20 order polynomial, but it will overfit the training data and give imprecise predictions. Finally, based on each signal model, we provide two ARMA models or its extension, such as SARMA or ARIMA, to whiten the residuals of the signal model. Thus, we have four candidate models, and we will explain how we select a final model in the next section.
 
-## Non-parametric Model: exponential smoothing with seasonal differencing 
+## Non-parametric Signal Model: exponential smoothing
 
-```{r}
+```{r, fig.cap="(a): (b):", fig.height=5}
+par(mfrow = c(2, 1))
 # exponential filter 
-filter_weights = 0.8^(1:10)
+alpha = 0.8
+lag = 10
+filter_weights = alpha^(1:lag)
 filter_weights = filter_weights/sum(filter_weights)
-filtered_stock = filter(stock_300$log_close, filter_weights, sides = 1)
+filtered_stock = filter(stock_300$Close, filter_weights, sides = 1)
 
-plot(stock_300$t, stock_300$log_close, type = 'l')
+plot(stock_300$t, stock_300$Close, type = 'l', main = "(a)")
 lines(stock_300$t, filtered_stock, col = 'red')
 
 filtered_stock = na.omit(filtered_stock)
-log_stock = stock_300$log_close[-1:-9]
+log_stock = stock_300$Close[-1:-9]
 res = log_stock - filtered_stock
-plot(res)
+plot(res, main = "(b)")
+```
+In this model, we choose exponential smoothing with weight $$\alpha = 0.8$$ and lag $$10$$ and seasonal differencing with period $$d = 5$$. 
+
+```{r}
 acf2(res)
 
 # (seasonal) differencing
-diff_res = diff(res, lag = 10)
+diff_res = diff(res, lag = 5)
 plot(diff_res)
 acf2(diff_res)
 ```
