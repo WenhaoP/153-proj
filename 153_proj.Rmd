@@ -107,11 +107,30 @@ As we see multiple consecutive spikes, which is called "leakage", we confirm tha
 
 # Model Construction
 
-With a comprehensive understanding of our data, we start to experiment and construct different time series model. We first stabilize the variance of our data. Then, we choose and build two non-parametric signal models to remove any trend or seasonality from the data so that the residuals are approximately weekly stationary. We do not consider any parametric method for modeling trend because we think the trend is too complicated to be modeled by a parametric model, such as a high-order polynomial.  Finally, based on each signal model, we provide two ARMA models or its extension, such as SARMA or ARIMA, to whiten the residuals of the signal model. Thus, we have four candidate models, and we will explain how we select a final model in the next section.
+With a comprehensive understanding of our data, we start to experiment and construct different time series model. We first stabilize the variance of our data. Then, we choose and build two non-parametric signal models to remove any trend or seasonality from the data so that the residuals are approximately weekly stationary. We do not consider any parametric method for modeling trend because we think the trend of the stock price data is too complicated to be modeled by a parametric model, such as a high-order polynomial. We could use a 15 or 20 order polynomial, but it will overfit the training data and give inprecise predictions. Finally, based on each signal model, we provide two ARMA models or its extension, such as SARMA or ARIMA, to whiten the residuals of the signal model. Thus, we have four candidate models, and we will explain how we select a final model in the next section.
 
 ## Non-parametric Model: exponential smoothing with seasonal differencing 
 
-We call it a "Mixed" model because we use parametric method-smoothing
+```{r}
+# exponential filter 
+filter_weights = 0.8^(1:10)
+filter_weights = filter_weights/sum(filter_weights)
+filtered_stock = filter(stock_300$log_close, filter_weights, sides = 1)
+
+plot(stock_300$t, stock_300$log_close, type = 'l')
+lines(stock_300$t, filtered_stock, col = 'red')
+
+filtered_stock = na.omit(filtered_stock)
+log_stock = stock_300$log_close[-1:-9]
+res = log_stock - filtered_stock
+plot(res)
+acf2(res)
+
+# (seasonal) differencing
+diff_res = diff(res, lag = 10)
+plot(diff_res)
+acf2(diff_res)
+```
 
 ## Non-parametric Model: second order differencing with seasonal differencing
 
