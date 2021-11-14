@@ -19,7 +19,7 @@ knitr::opts_chunk$set(
   message = FALSE, # don't show messages (less serious warnings)
   cache = FALSE, # set to TRUE to save results from last compilation
   fig.align = "center", # center figures
-  fig.height = 3,
+  fig.height = 4,
   out.width = "75%"
 )
 library(ggplot2)
@@ -107,18 +107,22 @@ acf2(stock_300$Close, max.lag = 50, main = "Close Price of Tesla")
 The decaying, positive ACF's imply a possible trend. As we expect, both sample ACF and PACF plots do not demonstrate a seasonality pattern. To quantitatively verify our superposition that the data does not have a strong seasonality pattern, we plot and inspect the periodogram of the data.
 
 ```{r, fig.cap="The periodogram of the data"}
+par(mfrow = c(1, 1), cex = 0.8)
 periodogram(stock_300$Close)
 ```
-Since the periodogram has multiple consecutive spikes, the phenomenon called "leakage", the data does not have a dominant seasonality pattern or frequency in our data. Nonetheless, TODO
+Since the periodogram has multiple consecutive spikes, the phenomenon called "leakage", the data does not have a dominant seasonality pattern or frequency in our data. Nonetheless, we suspect a possible seasonality with period $d=5$ since five trading days can be viewed as a week in the stock market.
 
 # Model Construction
 
-With a comprehensive understanding of our data, we start to experiment and construct different time series model. We choose and build two non-parametric trend models. Since we  to remove any trend or seasonality from the data so that the residuals are approximately weekly stationary. We do not consider any parametric method for modeling trend because we think the trend of the stock price data is too complicated to be modeled by a parametric model, such as a high-order polynomial. We could use a 15 or 20 order polynomial, but it will overfit the training data and give imprecise predictions. Finally, based on each signal model, we provide two ARMA models or its extension, such as SARMA or ARIMA, to whiten the residuals of the signal model. Thus, we have four candidate models, and we will explain how we select a final model in the next section.
+With a comprehensive understanding of our data, we start to experiment and construct different time series model. We choose and build two non-parametric signal models of the trend and seasonality in our data. We aim to make the residuals approximately weekly stationary. We do not consider any parametric trend model because we think the trend of the stock price data is too complicated to be modeled by a parametric model, such as a high-order polynomial. Certainly, we could use a 15 or 20 order polynomial, but it may overfit the training data and produce imprecise predictions. We do not consider a parametric seasonality model either by the analysis at the end of the EDA section. Finally, based on each signal model, we provide two ARMA models or its extension, such as SARMA or ARIMA, to whiten the residuals of the signal model. Thus, we have four candidate models, and we will explain how we select a final model among them in the next section.
 
 ## Non-parametric Signal Model: exponential smoothing
 
-```{r, fig.cap="(a): (b):", fig.height=5}
-par(mfrow = c(2, 1))
+In this model, we choose exponential smoothing with weight $\alpha = 0.8$ and lag $k = 10$ and a seasonal differencing with period $d = 5$. 
+
+```{r, fig.cap="(a): Time series plot of the original data and fitted values. (b): The residual plot of exponential smoothing.", out.width="100%"}
+par(mfrow = c(1, 2), cex = 0.65, lwd = 0.8)
+
 # exponential filter 
 alpha = 0.8
 lag = 10
@@ -126,26 +130,52 @@ filter_weights = alpha^(1:lag)
 filter_weights = filter_weights/sum(filter_weights)
 filtered_stock = filter(stock_300$Close, filter_weights, sides = 1)
 
-plot(stock_300$t, stock_300$Close, type = 'l', main = "(a)")
+# Plot the original data and fitted values
+plot(stock_300$t, stock_300$Close, type = 'l', main = "(a)", xlab = "Time", ylab = "Close Price")
 lines(stock_300$t, filtered_stock, col = 'red')
 
 filtered_stock = na.omit(filtered_stock)
-log_stock = stock_300$Close[-1:-9]
+log_stock = stock_300$Close[-1:-(lag - 1)]
 res = log_stock - filtered_stock
-plot(res, main = "(b)")
+plot(res, main = "(b)", xlab = "Time", ylab = "Residuals")
 ```
-In this model, we choose exponential smoothing with weight $$\alpha = 0.8$$ and lag $$10$$ and seasonal differencing with period $$d = 5$$. 
 
-```{r}
-acf2(res)
+We experiment with different combinations of $\alpha$ and $k$ with a careful consideration of overfitting issue. we choose $k=10$ as the final value because we want to only use past two weeks, which are ten days in our data, to forecast. We choose $\alpha = 0.8$ as the final value because it best balances the smoothing effect and the capture of trend pattern. Indeed, the smoothing line in Figure 4(a) fits the data in the way that we want. Note that we lose the first nine time points due to the computation process of the smoothing filter.
 
-# (seasonal) differencing
+However, the residual plot Figure 4(b) is fairly non-stationary, as it has cycling fluctuation pattern. We use the seasonal differencing with period $d = 5$, which is one week in our data, on the residuals to remove the pattern.
+
+```{r, results='hide', fig.cap="(a): Time series plot of the seasonal differenced (d = 5) residuals from the previous smoothing."}
+# seasonal differencing
 diff_res = diff(res, lag = 5)
-plot(diff_res)
-acf2(diff_res)
+plot(diff_res, main = "(a)", ylab = "Differenced Data")
 ```
 
-## Non-parametric Model: second order differencing with seasonal differencing
+We believe that the time series of the differenced residuals shown in Figure 5(a) is sufficiently stationary.
+
+## Non-parametric Model: second order differencing 
+
+In this model, we choose a second-order differencing. We observe that after the first-order differencing, there is still some trend pattern, such as the increasing one between $270$ and $300$, as shown by Figure TODO. Thus, we take another differencing and acquire the second-order differencing data shown in Figure TODO.
+
+```{r, fig.cap="(a): The first-order differenced data. (b): The second-order differenced data.", out.width="100%"}
+par(mfrow = c(1, 2), cex = 0.65, lwd = 0.5)
+
+# first order differencing
+stock_d = diff(stock_300$Close)
+# second order differencing
+stock_dd = diff(stock_d)
+
+plot(stock_d, type = 'l', main = "(a)", ylab = "Differenced Data")
+plot(stock_dd, type = 'l', main = "(b)", ylab = "Differenced Data")
+```
+The second-order differenced data looks more stationary than the first-order differenced data. Moreover, we are satisfied with the approximate stationarity of the second-order data, so we do not need to consider the seasonality any further.
+
+
+```{r, fig.cap="(a): Second-order and seasonal differenced (d = 5) data"}
+# # second order differencing plus seasonal differencing
+# stock_dd_5d = diff(stock_dd, lag = 5)
+# 
+# plot(stock_dd_5d, type = 'l', main = "(a)", ylab = "Differenced Data")
+```
 
 # Model Comparision and Selection
 
