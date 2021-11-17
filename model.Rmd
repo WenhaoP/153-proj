@@ -2,15 +2,27 @@
 title: "Stats 153 Project - Zoey"
 output: html_document
 ---
-
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+```{r include = FALSE}
+# Template source: https://github.com/alexpghayes/rmarkdown_homework_template
+knitr::opts_chunk$set(
+  echo = FALSE, # don't show code
+  warning = FALSE, # don't show warnings
+  message = FALSE, # don't show messages (less serious warnings)
+  cache = FALSE, # set to TRUE to save results from last compilation
+  fig.align = "center", # center figures
+  fig.height = 4,
+  out.width = "75%"
+)
+library(ggplot2)
+library(patchwork)
+library(astsa)
+library(TSA)
 ```
 
 ### 2. Exploratory Data Analysis
 
 Here we explore the data. Naturally, the first plot you should make is the data itself. Point out any visible features, e.g. heteroscedasticity, seasonality, trend.
-To observe the recent pattern better, we only use the last 300 data points from the time series. Each data point represents daily closure price for TSLA stock. 
+To observe the recent pattern better, we only use the last 300 data points from the time series. Each data point represents daily closure price for TSLA stock. From observing the original data, it seems that the variability of the time series data set appears to be non-constant, which is heterscedasticity. Therefore we transform original data through $f(Y_t) = log(Y_t)$.
 
 ```{r}
 t = 1:300
@@ -18,49 +30,64 @@ data <- read.csv("data/TSLA.csv")
 open <- data$Open
 close <- data$Adj.Close
 close_tail = tail(close, 300)
-plot.ts(close_tail)
+plot.ts(close_tail, main="TSLA stock closure price data", ylab="Daily closure price")
 log_data = log(close_tail)
 log_data = log(log_data)
-plot.ts(log_data)
+plot.ts(log_data, main="Log transformed TSLA stock closure price data", ylab="Daily closure price")
 ```
 
 ### 3. Models considered
 
-I tried different parametric models with combination of differencing to pursue stationary. 
-
-#### Signal model 1: linear model + differencing
-linear mode, differencing with lag=5, second order differencing with lag 1
+We try to pursue stationary first. We begin by exploring the differencing on stability transformed data. Intuitively, the stock market will operate 5 days per week. Therefore we can try to use differencing with lag 5. Also, a second order differencing with lag = 1 will help.
 
 ```{r}
-lm <- lm(log_data ~ t)
-res <- resid(lm)
-plot.ts(res)
-diff = diff(res, lag=5)
+diff = diff(log_data, lag=5)
 second_diff = diff(diff, lag = 1)
-plot.ts(second_diff)
-acf(second_diff)
-pacf(second_diff)
+plot.ts(second_diff, main="second order differencing on TSLA data")
+acf2(second_diff, main="Series: TSLA closure price data")
 ```
 
-#### Signal model 2: polynomial model + differencing
-```{r}
-fit <-lm(log_data ~ poly(t, 10, raw=TRUE))
-res <- resid(fit)
-plot.ts(res)
-diff = diff(res, lag=5)
-second_diff = diff(diff, lag = 5)
-plot.ts(second_diff)
-acf(second_diff)
-pacf(second_diff)
-```
+<!-- #### Signal model 1: linear model + differencing -->
+<!-- linear mode, differencing with lag=5, second order differencing with lag 1 -->
 
+<!--  ```{r} -->
+<!--  lm <- lm(log_data ~ t) -->
+<!--  res <- resid(lm) -->
+<!--  plot.ts(res) -->
+<!--  diff = diff(res, lag=5) -->
+<!--  second_diff = diff(diff, lag = 1) -->
+<!--  plot.ts(second_diff, main="second order differencing on TSLA data") -->
+<!--  acf2(second_diff) -->
+<!--  ``` -->
 
-## observe there's a bump on lag = 5 on both acf and pacf
-```{r}
-library(astsa)
-model1 <- sarima(log_data, p=0, d=1, q=0, P=0, D=1, Q=1, S=5)
-```
+<!-- #### Signal model 2: polynomial model + differencing -->
+<!-- ```{r} -->
+<!-- fit <-lm(log_data ~ poly(t, 10, raw=TRUE)) -->
+<!-- res <- resid(fit) -->
+<!-- plot.ts(res) -->
+<!-- ``` -->
+
 
 
 ### 4. Model Comparison and Selection
 
+Evaluating AIC, BIC, AICc, and time-series cross validation. Evaluate model based on how well they predict future values. 
+observe there's a bump on lag = 5 on both acf and pacf
+```{r}
+model1 <- sarima(log_data, p=0, d=1, q=0, P=0, D=1, Q=1, S=5)
+cat("AIC", model1$AIC)
+cat("BIC", model1$BIC)
+cat("AICc", model1$AICc)
+# cross validation, use 20% of data as cross validation: 300 * 0.2 = 60
+start_year <- 240
+end_year <- 300
+error = 0
+for (year in start_year:end_year) {
+  train <- window(log_data, end=year-0.001)
+  test <- window(log_data, start=year, end=year + 1 - 0.01)
+  forecast <- sarima.for(train, n.ahead = 10, p=0, d=1, q=0, P=0, D=1, Q=1, S=5)
+  error = error + sum((forecast$pred - test)^2)
+}
+error = error / (end_year - start_year + 1)
+cat("cross validation error", error)
+```
