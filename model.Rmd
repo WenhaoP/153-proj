@@ -72,7 +72,7 @@ acf2(second_diff, main="Series: TSLA closure price data")
 ### 4. Model Comparison and Selection
 
 Evaluating AIC, BIC, AICc, and time-series cross validation. Evaluate model based on how well they predict future values. 
-observe there's a bump on lag = 5 on both acf and pacf
+Observe there's a bump on lag = 5 on both acf and pacf. For ACF, there is a cutoff. For PACF, it is exponentially decay with lag period = 5. Choose model: (0, 1, 0)(0, 1, 1)[5]. The model looks well on Ljung-Box statistic with all p values above 0.05. Also the ACF of residuals shows no ACF go beyond two blue band. 
 ```{r}
 model1 <- sarima(log_data, p=0, d=1, q=0, P=0, D=1, Q=1, S=5)
 cat("AIC", model1$AIC)
