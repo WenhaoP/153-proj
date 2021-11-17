@@ -6,8 +6,6 @@ output:
   pdf_document: 
     toc: true
     number_sections: true
-  html_document:
-    df_print: paged
 urlcolor: blue
 ---
 \newpage
@@ -50,7 +48,7 @@ stock_300$t = t
 
 # Exploratory Data Analysis
 
-To obtain a comprehensive understanding of the data, we conduct explanatory data analysis (EDA) first. Figure 1(a) is the time series plot of all the given time points. We observe that the average price of Tesla before 2020 is considerably lower than that after 2020. Also, the stock price before 2020 seems to have a constant trend and no seasonality. Moreover, due to the excessive number of time points, it is difficult to visually examine the trend and seasonality pattern for data after 2020. Therefore, for the sake of interest and convenience, we decide to only analyze the last 300 time points, which cover the period from `2020-08-26` to `2021-11-02` excluding weekends. Thus, whenever we mention "data" in the following analysis, we implicitly mean the last 300 time points. 
+To obtain a comprehensive understanding of the data, we conduct explanatory data analysis (EDA) first. Figure 1(a) is the time series plot of all the given time points. We observe that the stock prices of Tesla before 2020 are averagely and considerably lower than those after 2020. The significantly different scales of different parts of the time series make it hard to visually examine the trend and seasonality pattern of the time series. Moreover, since we are majorly interested in the recent activities of Tesla, it is unnecessary for us to analyze all the available data. Therefore, for the sake of interest and convenience, we decide to only analyze the last 300 time points, which cover the period from `2020-08-26` to `2021-11-02` excluding weekends. Thus, whenever we use the word "data" in the following analysis, we implicitly mean the time series of last three hundred time points. 
 
 ```{r, fig.cap="(a) Time series plot of all available trading days. (b) Time series plot of last 300 trading days", fig.height=6}
 # Line plot of all the data
@@ -58,6 +56,7 @@ full_data <- ggplot(data = stock, aes(x = Date, y = Close)) +
   geom_line() +
   ylab("Close Price (Dollars)") +
   ggtitle("(a)")
+
 # Line plot of last 300 data
 last_300 <- ggplot(data = stock_300, aes(x = Date, y = Close)) +
   geom_line() +
@@ -66,51 +65,42 @@ last_300 <- ggplot(data = stock_300, aes(x = Date, y = Close)) +
 
 full_data / last_300
 ```
-Figure 1(b) is the time series plot of the close prices of Tesla in last three hundred trading days before and including `2021-11-02`. We first observe that our data is roughly homoscedastic based on Figure 1(b), so we do not need to transform the data to stabilize the variance of the data.
 
-```{r, fig.cap="(a) Time series plot of all available trading days. (b) Time series plot of last 300 trading days"}
-# # Line plot of last 300 data with square root transformation
-# last_300_sqrt <- ggplot(data = stock_300, aes(x = Date, y = Close)) +
-#   geom_line() +
-#   scale_y_sqrt() +
-#   ggtitle("(a)")
-# 
-# # Line plot of last 300 data with natural log transformation
-# last_300_log <- ggplot(data = stock_300, aes(x = Date, y = Close)) +
-#   geom_line() +
-#   scale_y_log10() +
-#   ggtitle("(b)")
-# 
-# 
-# last_300
-# last_300_sqrt
-# last_300_log
-# ```
-# ```{r, fig.cap="(a) Time series plot of all available trading days. (b) Time series plot of last 300 trading days"}
-# par(mfrow = c(1, 2))
-# 
-# # Line plot of last 300 data with square root transformation
-# stock_300$sqrt_close = sqrt(stock_300$Close)
-# last_300_sqrt <- plot(t, stock_300$sqrt_close, type = 'l', xlab = 'Day')
-# 
-# # Line plot of last 300 data with natural log transformation
-# stock_300$log_close = log(stock_300$Close)
-# last_300_log <- plot(t, stock_300$log_close, type = 'l', xlab = 'Day')
+Figure 1(b) is the time series plot of the close prices of Tesla in last three hundred trading days before and including `2021-11-02`. We first observe that our data is roughly homoscedastic based on Figure 1(b). To verify our observation, we try the square root and natural log transformations and see whether they effectively stabilize the variance of the time series. Their plots are below in Figure 2.
+
+```{r, fig.cap="(a): Original time series. (b): Square root transfromed time seires. (c): Natural log transformed time series."}
+# Line plot of last 300 data
+last_300 <- ggplot(data = stock_300, aes(x = Date, y = Close)) +
+  geom_line() +
+  ylab("Close Price (Dollars)") +
+  ggtitle("(a)") + 
+  guides(x =  guide_axis(angle = 90))
+
+# Line plot of last 300 data with square root transformation
+last_300_sqrt <- ggplot(data = stock_300, aes(x = Date, y = Close)) +
+  geom_line() +
+  scale_y_sqrt() +
+  ylab("Close Price (Dollars)") +
+  ggtitle("(b)") + 
+  guides(x =  guide_axis(angle = 90))
+
+# Line plot of last 300 data with natural log transformation
+last_300_log <- ggplot(data = stock_300, aes(x = Date, y = Close)) +
+  geom_line() +
+  scale_y_log10() +
+  ylab("Close Price (Dollars)") +
+  ggtitle("(c)") + 
+  guides(x =  guide_axis(angle = 90))
+
+last_300 + last_300_sqrt + last_300_log
 ```
+We can see that both transformations unnecessarily increase the variance of the time series before mid-November in 2020 and do not change the variance of other time series data. Although both transformations shorten the vertical distance between the maximum and minimum of the time series after Oct. 2021, the spike after Oct. 2021 is more like an increasing trend rather than a huge fluctuation. In short, both transformations are redundant, and we do not need to use any variance stabilizing transformation. 
 
-Intuitively, the data is not stationary since there exists a nonlinear trend. We do not observe a clear seasonality pattern probably because the data is daily. To be more convincing, we plot the sample ACF and PACF of the data in Figure 2.
+Back to Figure 1(b), intuitively, the data is not stationary because there exists a nonlinear and generally increasing trend. The trend first increases until around Feb. 2021 and then decreases until around Mid-May. 2021. Finally, the trend increases again until the end of the time series. Nonetheless, we do not observe an obvious or significant seasonality pattern. It matches the intuition since the granularity of our data is day, and the structure of stock price data is too complicated to have a seasonality pattern.
 
-```{r, fig.cap="Sample ACF and PACF plots of the data", results='hide'}
-acf2(stock_300$Close, max.lag = 50, main = "Close Price of Tesla")
-```
+In conclusion, based on all the previous discussion in EDA, we decide to construct possible models on the original time series data including only the last three hundred time points. 
 
-The decaying, positive ACF's imply a possible trend. As we expect, both sample ACF and PACF plots do not demonstrate a seasonality pattern. To quantitatively verify our superposition that the data does not have a strong seasonality pattern, we plot and inspect the periodogram of the data.
 
-```{r, fig.cap="The periodogram of the data"}
-par(mfrow = c(1, 1), cex = 0.8)
-periodogram(stock_300$Close)
-```
-Since the periodogram has multiple consecutive spikes, the phenomenon called "leakage", the data does not have a dominant seasonality pattern or frequency in our data. Nonetheless, we suspect a possible seasonality with period $d=5$ since five trading days can be viewed as a week in the stock market.
 
 # Model Construction
 
@@ -152,7 +142,7 @@ plot(diff_res, main = "(a)", ylab = "Differenced Data")
 
 We believe that the time series of the differenced residuals shown in Figure 5(a) is sufficiently stationary.
 
-## Non-parametric Model: second order differencing 
+## Non-parametric Signal Model: second-order differencing 
 
 In this model, we choose a second-order differencing. We observe that after the first-order differencing, there is still some trend pattern, such as the increasing one between $270$ and $300$, as shown by Figure TODO. Thus, we take another differencing and acquire the second-order differencing data shown in Figure TODO.
 
