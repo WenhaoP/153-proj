@@ -172,7 +172,7 @@ The second-order differenced data looks more stationary than the first-order dif
 ## Model 2 (Ruojia Zhang)
 
 ```{r}
-model2 <- sarima(diff_res, p = 1, d = 0, q = 1, P = 0, D = 0, Q = 2, S = 5)
+model2 <- sarima(stock_300$Close, p = 1, d = 0, q = 1, P = 0, D = 1, Q = 2, S = 5)
 ```
 
 Comments:
@@ -206,7 +206,7 @@ for (timestep in times) {
   train_set <- window(diff_res, end=timestep-0.001)
   test_set <- window(diff_res, start=timestep, end=timestep + 10 - 0.01)
   #
-  forecast <- sarima.for(train_set, n.ahead=10, p = 1, d = 0, q = 1, P = 0, D = 0, Q = 2, S = 5)$pred
+  forecast <- sarima.for(train_set, n.ahead=10, p = 1, d = 0, q = 1, P = 0, D = 1, Q = 2, S = 5)$pred
   #
   sum_squared_errors = sum_squared_errors + sum((forecast - test_set)**2)
 }
