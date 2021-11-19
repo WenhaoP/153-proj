@@ -17,8 +17,7 @@ knitr::opts_chunk$set(
   message = FALSE, # don't show messages (less serious warnings)
   cache = FALSE, # set to TRUE to save results from last compilation
   fig.align = "center", # center figures
-  fig.height = 4,
-  out.width = "75%"
+  fig.height = 4
 )
 library(ggplot2)
 library(patchwork)
@@ -48,9 +47,9 @@ stock_300$t = t
 
 # Exploratory Data Analysis
 
-To obtain a comprehensive understanding of the data, we conduct explanatory data analysis (EDA) first. Figure 1(a) is the time series plot of all the given time points. We observe that the stock prices of Tesla before 2020 are averagely and considerably lower than those after 2020. The significantly different scales of different parts of the time series make it hard to visually examine the trend and seasonality pattern of the time series. Moreover, since we are majorly interested in the recent activities of Tesla, it is unnecessary for us to analyze all the available data. Therefore, for the sake of interest and convenience, we decide to only analyze the last 300 time points, which cover the period from `2020-08-26` to `2021-11-02` excluding weekends. Thus, whenever we use the word "data" in the following analysis, we implicitly mean the time series of last three hundred time points. 
+To obtain a comprehensive understanding of the data, we conduct explanatory data analysis (EDA) first. Figure 1(a) is the time series plot of all the given time points. We observe that the stock prices of Tesla before 2020 are averagely and considerably lower than those after 2020. The significantly different scales of different parts of the time series make it hard to visually examine the trend and seasonality pattern of the time series. Moreover, since we are majorly interested in the recent activities of Tesla, we do not have to analyze all the available data. Therefore, for the sake of interest and convenience, we decide only to analyze the last 300 time points, which cover the period from `2020-08-26` to `2021-11-02` excluding weekends. Thus, whenever we use the word "data" in the following analysis, we implicitly mean the time series of the last three hundred time points. 
 
-```{r, fig.cap="(a) Time series plot of all available trading days. (b) Time series plot of last 300 trading days", fig.height=6}
+```{r, fig.cap="(a) Time series plot of all available trading days. (b) Time series plot of last 300 trading days", fig.height=6, out.width="80%", fig.height=4.5}
 # Line plot of all the data
 full_data <- ggplot(data = stock, aes(x = Date, y = Close)) +
   geom_line() +
@@ -66,14 +65,15 @@ last_300 <- ggplot(data = stock_300, aes(x = Date, y = Close)) +
 full_data / last_300
 ```
 
-Figure 1(b) is the time series plot of the close prices of Tesla in last three hundred trading days before and including `2021-11-02`. We first observe that our data is roughly homoscedastic based on Figure 1(b). To verify our observation, we try the square root and natural log transformations and see whether they effectively stabilize the variance of the time series. Their plots are below in Figure 2.
+Figure 1(b) is the time series plot of the close prices of Tesla in the last three hundred trading days before and including `2021-11-02`. We first observe that our data is roughly homoscedastic based on Figure 1(b). To verify our observation, we try the square root and natural log transformations and see whether they effectively stabilize the variance of the time series. Their plots are below in Figure 2.
 
-```{r, fig.cap="(a): Original time series. (b): Square root transfromed time seires. (c): Natural log transformed time series."}
+```{r, fig.cap="(a): Original time series. (b): Square root transfromed time seires. (c): Natural log transformed time series.", fig.height=3}
 # Line plot of last 300 data
 last_300 <- ggplot(data = stock_300, aes(x = Date, y = Close)) +
   geom_line() +
   ylab("Close Price (Dollars)") +
   ggtitle("(a)") + 
+  theme(text = element_text(size = 8)) + 
   guides(x =  guide_axis(angle = 90))
 
 # Line plot of last 300 data with square root transformation
@@ -82,6 +82,7 @@ last_300_sqrt <- ggplot(data = stock_300, aes(x = Date, y = Close)) +
   scale_y_sqrt() +
   ylab("Close Price (Dollars)") +
   ggtitle("(b)") + 
+  theme(text = element_text(size = 8)) +
   guides(x =  guide_axis(angle = 90))
 
 # Line plot of last 300 data with natural log transformation
@@ -90,27 +91,26 @@ last_300_log <- ggplot(data = stock_300, aes(x = Date, y = Close)) +
   scale_y_log10() +
   ylab("Close Price (Dollars)") +
   ggtitle("(c)") + 
+  theme(text = element_text(size = 8)) +
   guides(x =  guide_axis(angle = 90))
 
 last_300 + last_300_sqrt + last_300_log
 ```
-We can see that both transformations unnecessarily increase the variance of the time series before mid-November in 2020 and do not change the variance of other time series data. Although both transformations shorten the vertical distance between the maximum and minimum of the time series after Oct. 2021, the spike after Oct. 2021 is more like an increasing trend rather than a huge fluctuation. In short, both transformations are redundant, and we do not need to use any variance stabilizing transformation. 
+We can see that both transformations unnecessarily increase the variance of the time series before mid-November in 2020 and do not change the variance of other time series data. Although both transformations shorten the vertical distance between the maximum and minimum of the time series after Oct. 2021, the spike after Oct. 2021 is more like an increasing trend than a considerable fluctuation. In short, both transformations are redundant, and we do not need to use any variance stabilizing transformation. 
 
-Back to Figure 1(b), intuitively, the data is not stationary because there exists a nonlinear and generally increasing trend. The trend first increases until around Feb. 2021 and then decreases until around Mid-May. 2021. Finally, the trend increases again until the end of the time series. Nonetheless, we do not observe an obvious or significant seasonality pattern. It matches the intuition since the granularity of our data is day, and the structure of stock price data is too complicated to have a seasonality pattern.
+Back to Figure 1(b), intuitively, the data is not stationary because of a nonlinear and generally increasing trend. The trend first increases until around Feb. 2021 and then decreases until around Mid-May. 2021. Finally, the trend increases again until the end of the time series. Nonetheless, we do not observe an obvious or significant seasonality pattern. It matches the intuition since the granularity of our data is day, and the structure of stock price data is too complicated to have a seasonality pattern.
 
-In conclusion, based on all the previous discussion in EDA, we decide to construct possible models on the original time series data including only the last three hundred time points. 
-
-
+In conclusion, based on all the previous discussions in EDA, we decide to construct possible models on the original time series data, including only the last three hundred time points. 
 
 # Model Construction
 
-With a comprehensive understanding of our data, we start to experiment and construct different time series model. We choose and build two non-parametric signal models of the trend and seasonality in our data. We aim to make the residuals approximately weekly stationary. We do not consider any parametric trend model because we think the trend of the stock price data is too complicated to be modeled by a parametric model, such as a high-order polynomial. Certainly, we could use a 15 or 20 order polynomial, but it may overfit the training data and produce imprecise predictions. We do not consider a parametric seasonality model either by the analysis at the end of the EDA section. Finally, based on each signal model, we provide two ARMA models or its extension, such as SARMA or ARIMA, to whiten the residuals of the signal model. Thus, we have four candidate models, and we will explain how we select a final model among them in the next section.
+With a comprehensive understanding of our data, we start to experiment and construct different time series model. We choose and build two non-parametric signal models of the trend and seasonality in our data. We aim to make the residuals approximately weekly stationary. We do not consider any parametric trend model because we think the trend of the stock price data is too complicated to be modeled by a parametric model, such as a high-order polynomial. Certainly, we could use a 15 or 20 order polynomial, but it may overfit the training data and produce imprecise predictions. We do not consider a parametric seasonality model either because we do not find a clear seasonality pattern in our data by the EDA. Finally, based on each signal model, we provide two ARMA models or its extension, such as SARMA or ARIMA, to whiten the residuals of the signal model. Thus, we have four candidate models, and we will explain how we select a final model among them in the next section.
 
 ## Non-parametric Signal Model: exponential smoothing
 
-In this model, we choose exponential smoothing with weight $\alpha = 0.8$ and lag $k = 10$ and a seasonal differencing with period $d = 5$. 
+In this signal model, we choose exponential smoothing with weight $\alpha = 0.8$ and lag $k = 10$ and a seasonal differencing with period $d = 5$. 
 
-```{r, fig.cap="(a): Time series plot of the original data and fitted values. (b): The residual plot of exponential smoothing.", out.width="100%"}
+```{r, fig.cap="(a): Time series plot of the original data and fitted values. (b): The residual plot of exponential smoothing.", fig.height=3}
 par(mfrow = c(1, 2), cex = 0.65, lwd = 0.8)
 
 # exponential filter 
@@ -130,23 +130,23 @@ res = log_stock - filtered_stock
 plot(res, main = "(b)", xlab = "Time", ylab = "Residuals")
 ```
 
-We experiment with different combinations of $\alpha$ and $k$ with a careful consideration of overfitting issue. we choose $k=10$ as the final value because we want to only use past two weeks, which are ten days in our data, to forecast. We choose $\alpha = 0.8$ as the final value because it best balances the smoothing effect and the capture of trend pattern. Indeed, the smoothing line in Figure 4(a) fits the data in the way that we want. Note that we lose the first nine time points due to the computation process of the smoothing filter.
+We experiment with different combinations of $\alpha$ and $k$ with a careful consideration of overfitting issue. we choose $k=10$ as the final value because we want to only use past two weeks, which are ten days in our data, to forecast. We choose $\alpha = 0.8$ as the final value because we think it best balances the smoothing effect and the capture of trend pattern among $(0,1)$. Indeed, the smoothing line in Figure 4(a) fits the data in the way that we want. Note that we lose the first nine time points due to the computation process of the exponential smoothing.
 
-However, the residual plot Figure 4(b) is fairly non-stationary, as it has cycling fluctuation pattern. We use the seasonal differencing with period $d = 5$, which is one week in our data, on the residuals to remove the pattern.
+However, the residual plot Figure 4(b) is fairly non-stationary, as it has cycling fluctuation pattern and still slightly nonlinear trend. It might be due to that we intentionally let exponential smoothing not fit the data perfectly. Next, We use the seasonal differencing with period $d = 5$, which is one week in our data, to further make the residuals more stationary.
 
-```{r, results='hide', fig.cap="(a): Time series plot of the seasonal differenced (d = 5) residuals from the previous smoothing."}
+```{r, results='hide', fig.cap="(a): Time series plot of the seasonal differenced (d = 5) residuals from the previous smoothing.", out.width="80%"}
 # seasonal differencing
 diff_res = diff(res, lag = 5)
 plot(diff_res, main = "(a)", ylab = "Differenced Data")
 ```
 
-We believe that the time series of the differenced residuals shown in Figure 5(a) is sufficiently stationary.
+Indeed, now the differenced residuals become more stationary. There seems to be a contradiction that recalling in EDA, we claim that there is not a clear seasonality in our data. However, the effect of the seasonal differencing here implies a possible seasonality with period $d=5$. We think it is because the seasonal differencing is actually removing the remaining trend left by the exponential smoothing instead of the seasonality. Nevertheless, We believe that the time series of the differenced residuals shown in Figure 5(a) is stationary enough for us to build ARMA models on it.
 
 ## Non-parametric Signal Model: second-order differencing 
 
-In this model, we choose a second-order differencing. We observe that after the first-order differencing, there is still some trend pattern, such as the increasing one between $270$ and $300$, as shown by Figure TODO. Thus, we take another differencing and acquire the second-order differencing data shown in Figure TODO.
+In this model, we choose the second-order differencing to remove the trend. We observe that after the first-order differencing, there is still some trend pattern, such as the increasing one between $270$ and $300$, as shown by Figure TODO. This matches our previous analysis that the trend of our data is nonlinear in EDA. Thus, we take another differencing and acquire the second-order differencing data shown in Figure TODO.
 
-```{r, fig.cap="(a): The first-order differenced data. (b): The second-order differenced data.", out.width="100%"}
+```{r, fig.cap="(a): The first-order differenced data. (b): The second-order differenced data.", fig.height=3}
 par(mfrow = c(1, 2), cex = 0.65, lwd = 0.5)
 
 # first order differencing
@@ -157,15 +157,8 @@ stock_dd = diff(stock_d)
 plot(stock_d, type = 'l', main = "(a)", ylab = "Differenced Data")
 plot(stock_dd, type = 'l', main = "(b)", ylab = "Differenced Data")
 ```
-The second-order differenced data looks more stationary than the first-order differenced data. Moreover, we are satisfied with the approximate stationarity of the second-order data, so we do not need to consider the seasonality any further.
+The second-order differenced time series is more stationary than the first-order differenced time series. We can keep trying more higher-order differencings, but they may overfit our data. Therefore, we think the second-order differenced time series is already stationary enough for us to build ARMA model on it.
 
-
-```{r, fig.cap="(a): Second-order and seasonal differenced (d = 5) data"}
-# # second order differencing plus seasonal differencing
-# stock_dd_5d = diff(stock_dd, lag = 5)
-# 
-# plot(stock_dd_5d, type = 'l', main = "(a)", ylab = "Differenced Data")
-```
 
 # Model Comparision and Selection
 
