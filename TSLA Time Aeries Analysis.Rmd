@@ -219,16 +219,10 @@ end <- 290
 sum_squared_errors <- 0
 jump <- 10
 for (i in start:end) {
-train <- window(res1, end = i - 0.001)
-test <- window(res1, start = i, end = i + 10 - 0.01)
-
-exp_forecast <- ses(train, alpha = 0.9, h = 10)
-
-res_forecast <- sarima.for(res1, n.ahead = 10, 
-                           p = 2, d = 0, q = 3, P = 2, D = 0, Q = 1, S = 5)
-
-sum_squared_errors[] = sum_squared_errors[] + sum((res_forecast$pred-test)^2)
-i < i + 10
+train <- window(filtered_stock, end = i - 0.001)
+test <- window(filtered_stock, start = i, end = i + 10 - 0.01)
+m1_forecast <- forecast(ets(train), h = 5)
+sum_squared_errors[] = sum_squared_errors[] + sum((m1_forecast[['mean']]-test)^2)
 }
 
 sum_squared_errors / (end - start + 1)
