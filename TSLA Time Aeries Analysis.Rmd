@@ -1,0 +1,244 @@
+---
+title: "Time series analysis on the stock price of Tesla Inc."
+author: "Wenhao Pan (3034946058), Ruojia Zhang, Mengzhu Sun, Xiangxi Wang, Mingmao Sun"
+date: "November 13, 2021"
+output:
+  pdf_document: 
+    toc: true
+    number_sections: true
+  html_document:
+    df_print: paged
+urlcolor: blue
+---
+\newpage
+```{r include = FALSE}
+# Template source: https://github.com/alexpghayes/rmarkdown_homework_template
+knitr::opts_chunk$set(
+  echo = FALSE, # don't show code
+  warning = FALSE, # don't show warnings
+  message = FALSE, # don't show messages (less serious warnings)
+  cache = FALSE, # set to TRUE to save results from last compilation
+  fig.align = "center", # center figures
+  fig.height = 4,
+  out.width = "75%"
+)
+library(ggplot2)
+library(patchwork)
+library(astsa)
+library(TSA)
+library(forecast)
+set.seed(153) # make random results reproducible
+```
+
+# Abstract
+
+# Introduction
+
+# Data Description
+
+```{r}
+# load data
+stock = read.csv("/Users/charlottewang/Desktop/153 Project/TSLA.csv")
+stock$Date = as.Date(stock$Date)
+
+# Extract last 300 days
+n = 300
+t = 1:n
+stock_300 = tail(stock, n)
+stock_300 = stock_300[c('Date','Close')]
+stock_300$t = t
+```
+
+# Exploratory Data Analysis
+
+To obtain a comprehensive understanding of the data, we conduct explanatory data analysis (EDA) first. Figure 1(a) is the time series plot of all the given time points. We observe that the average price of Tesla before 2020 is considerably lower than that after 2020. Also, the stock price before 2020 seems to have a constant trend and no seasonality. Moreover, due to the excessive number of time points, it is difficult to visually examine the trend and seasonality pattern for data after 2020. Therefore, for the sake of interest and convenience, we decide to only analyze the last 300 time points, which cover the period from `2020-08-26` to `2021-11-02` excluding weekends. Thus, whenever we mention "data" in the following analysis, we implicitly mean the last 300 time points. 
+
+```{r, fig.cap="(a) Time series plot of all available trading days. (b) Time series plot of last 300 trading days", fig.height=6}
+# Line plot of all the data
+full_data <- ggplot(data = stock, aes(x = Date, y = Close)) +
+  geom_line() +
+  ylab("Close Price (Dollars)") +
+  ggtitle("(a)")
+# Line plot of last 300 data
+last_300 <- ggplot(data = stock_300, aes(x = Date, y = Close)) +
+  geom_line() +
+  ylab("Close Price (Dollars)") +
+  ggtitle("(b)")
+
+full_data / last_300
+```
+Figure 1(b) is the time series plot of the close prices of Tesla in last three hundred trading days before and including `2021-11-02`. We first observe that our data is roughly homoscedastic based on Figure 1(b), so we do not need to transform the data to stabilize the variance of the data.
+
+```{r, fig.cap="(a) Time series plot of all available trading days. (b) Time series plot of last 300 trading days"}
+# # Line plot of last 300 data with square root transformation
+# last_300_sqrt <- ggplot(data = stock_300, aes(x = Date, y = Close)) +
+#   geom_line() +
+#   scale_y_sqrt() +
+#   ggtitle("(a)")
+# 
+# # Line plot of last 300 data with natural log transformation
+# last_300_log <- ggplot(data = stock_300, aes(x = Date, y = Close)) +
+#   geom_line() +
+#   scale_y_log10() +
+#   ggtitle("(b)")
+# 
+# 
+# last_300
+# last_300_sqrt
+# last_300_log
+# ```
+# ```{r, fig.cap="(a) Time series plot of all available trading days. (b) Time series plot of last 300 trading days"}
+# par(mfrow = c(1, 2))
+# 
+# # Line plot of last 300 data with square root transformation
+# stock_300$sqrt_close = sqrt(stock_300$Close)
+# last_300_sqrt <- plot(t, stock_300$sqrt_close, type = 'l', xlab = 'Day')
+# 
+# # Line plot of last 300 data with natural log transformation
+# stock_300$log_close = log(stock_300$Close)
+# last_300_log <- plot(t, stock_300$log_close, type = 'l', xlab = 'Day')
+```
+
+Intuitively, the data is not stationary since there exists a nonlinear trend. We do not observe a clear seasonality pattern probably because the data is daily. To be more convincing, we plot the sample ACF and PACF of the data in Figure 2.
+
+```{r, fig.cap="Sample ACF and PACF plots of the data", results='hide'}
+acf2(stock_300$Close, max.lag = 50, main = "Close Price of Tesla")
+```
+
+The decaying, positive ACF's imply a possible trend. As we expect, both sample ACF and PACF plots do not demonstrate a seasonality pattern. To quantitatively verify our superposition that the data does not have a strong seasonality pattern, we plot and inspect the periodogram of the data.
+
+```{r, fig.cap="The periodogram of the data"}
+par(mfrow = c(1, 1), cex = 0.8)
+periodogram(stock_300$Close)
+```
+Since the periodogram has multiple consecutive spikes, the phenomenon called "leakage", the data does not have a dominant seasonality pattern or frequency in our data. Nonetheless, we suspect a possible seasonality with period $d=5$ since five trading days can be viewed as a week in the stock market.
+
+# Model Construction
+
+With a comprehensive understanding of our data, we start to experiment and construct different time series model. We choose and build two non-parametric signal models of the trend and seasonality in our data. We aim to make the residuals approximately weekly stationary. We do not consider any parametric trend model because we think the trend of the stock price data is too complicated to be modeled by a parametric model, such as a high-order polynomial. Certainly, we could use a 15 or 20 order polynomial, but it may overfit the training data and produce imprecise predictions. We do not consider a parametric seasonality model either by the analysis at the end of the EDA section. Finally, based on each signal model, we provide two ARMA models or its extension, such as SARMA or ARIMA, to whiten the residuals of the signal model. Thus, we have four candidate models, and we will explain how we select a final model among them in the next section.
+
+
+## Non-parametric Signal Model: exponential smoothing
+
+In this model, we choose exponential smoothing with weight $\alpha = 0.9$ and lag $k = 10$ and a seasonal differencing with period $d = 5$. 
+
+```{r, fig.cap="(a): Time series plot of the original data and fitted values. (b): The residual plot of exponential smoothing.", out.width="100%"}
+par(mfrow = c(1, 2), cex = 0.65, lwd = 0.8)
+
+train <- window(stock_300$Close, start = 200.0001)
+train
+forecast(ets(train), h = 5)%>%
+  autoplot()
+
+ets(train)
+
+# exponential filter 
+alpha = 0.9
+lag = 10
+filter_weights = alpha^(1:lag)
+filter_weights = filter_weights/sum(filter_weights)
+filtered_stock = stats::filter(stock_300$Close, filter_weights, sides = 1)
+# Plot the original data and fitted values
+plot(stock_300$t, stock_300$Close, type = 'l', main = "(a)", xlab = "Time", ylab = "Close Price")
+lines(stock_300$t, filtered_stock, col = 'red')
+
+filtered_stock = na.omit(filtered_stock)
+log_stock = stock_300$Close[-1:-(lag - 1)]
+res1 = log_stock - filtered_stock
+plot(res, main = "(b)", xlab = "Time", ylab = "Residuals")
+```
+
+We experiment with different combinations of $\alpha$ and $k$ with a careful consideration of overfitting issue. we choose $k=10$ as the final value because we want to only use past two weeks, which are ten days in our data, to forecast. We choose $\alpha = 0.9$ as the final value because it best balances the smoothing effect and the capture of trend pattern. Indeed, the smoothing line in Figure 4(a) fits the data in the way that we want. Note that we lose the first nine time points due to the computation process of the smoothing filter.
+
+However, the residual plot Figure 4(b) is fairly non-stationary, as it has cycling fluctuation pattern. We use the seasonal differencing with period $d = 5$, which is one week in our data, on the residuals to remove the pattern.
+
+
+```{r, results='hide', fig.cap="(a): Time series plot of the seasonal differenced (d = 5) residuals from the previous smoothing."}
+# seasonal differencing
+diff_res1 = diff(res1, lag = 5)
+plot(diff_res1, main = "(a)", ylab = "Differenced Data")
+acf2(diff_res1)
+```
+We believe that the time series of the differenced residuals shown in Figure 5(a) is sufficiently stationary.
+
+
+## Non-parametric Model: second order differencing 
+
+In this model, we choose a second-order differencing. We observe that after the first-order differencing, there is still some trend pattern, such as the increasing one between $270$ and $300$, as shown by Figure TODO. Thus, we take another differencing and acquire the second-order differencing data shown in Figure TODO.
+
+```{r, fig.cap="(a): The first-order differenced data. (b): The second-order differenced data.", out.width="100%"}
+par(mfrow = c(1, 2), cex = 0.65, lwd = 0.5)
+
+# first order differencing
+stock_d = diff(stock_300$Close)
+# second order differencing
+stock_dd = diff(stock_d)
+
+plot(stock_d, type = 'l', main = "(a)", ylab = "Differenced Data")
+plot(stock_dd, type = 'l', main = "(b)", ylab = "Differenced Data")
+```
+The second-order differenced data looks more stationary than the first-order differenced data. Moreover, we are satisfied with the approximate stationarity of the second-order data, so we do not need to consider the seasonality any further.
+
+
+```{r, fig.cap="(a): Second-order and seasonal differenced (d = 5) data"}
+# # second order differencing plus seasonal differencing
+# stock_dd_5d = diff(stock_dd, lag = 5)
+# 
+# plot(stock_dd_5d, type = 'l', main = "(a)", ylab = "Differenced Data")
+```
+
+# Model Comparision and Selection
+
+## Model 1 ARIMA(1,0,0)x(0,0,1)[5]
+
+```{r}
+acf2(diff_res1)
+```
+Non-Seasonal: In the ACF plot, there is a sharp cutoff after lag 3, so I chose MA model parameter to be q=3.
+The PACF plot has a significant spike at lag 1, so I chose the AR model parameter to be p=1.
+When eliminating the trend, I did not use log difference to pursue stationary, so the parameter d is chosen to be 0.
+Seasonal: After eliminating trend by exponential smoothing, I differenced the data once at lag 5, so I chose S to be 5 as the seasonal period of the model. The process of estimating the rest of seasonal parameters is similar to the non-seasonal part. 
+Around lags of multiple of 5, the PACF plot shows negative spikes at 5, 10, and 15, while in the ACF plot, there is only a cluster of negative spikes around lag 5. So I chose a seasonal ARMA(2, 1) model.
+I also used auto.arima function to check the parameter, showing the terms are quite similar.
+
+```{r}
+auto.arima(diff_res1)
+model1 <- sarima(res1, p = 2, d = 0, q = 3, P = 2, D = 0, Q = 1, S = 5)
+model1$AIC
+model1$AICc
+model1$BIC
+```
+Figure .
+The standardized residuals look like an i.i.d mean 0, variance 1 sequence.
+In the ACF plot of residuals, almost all the lines lie within blue band, and the normal Q-Q plot is approximately straight line, indicating the assumption that the errors are normal distributed. Furthermore, all the p-values in Ljung-Box lie out of the blue band, so the null hypothesis is that the fit is reasonable.  
+
+
+```{r}
+start <- 250
+end <- 290
+sum_squared_errors <- 0
+jump <- 10
+for (i in start:end) {
+train <- window(res1, end = i - 0.001)
+test <- window(res1, start = i, end = i + 10 - 0.01)
+
+exp_forecast <- ses(train, alpha = 0.9, h = 10)
+
+res_forecast <- sarima.for(res1, n.ahead = 10, 
+                           p = 2, d = 0, q = 3, P = 2, D = 0, Q = 1, S = 5)
+
+sum_squared_errors[] = sum_squared_errors[] + sum((res_forecast$pred-test)^2)
+i < i + 10
+}
+
+sum_squared_errors / (end - start + 1)
+
+```
+
+# Final Model
+
+## Model interpretation
+
+## Prediction
+
+# Conclusion
