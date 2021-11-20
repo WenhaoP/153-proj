@@ -127,8 +127,8 @@ par(mfrow = c(1, 2), cex = 0.65, lwd = 0.8)
 
 train <- window(stock_300$Close, start = 200.0001)
 train
-forecast(ets(train), h = 5)%>%
-  autoplot()
+# forecast(ets(train), h = 5)%>%
+#   autoplot()
 
 ets(train)
 
@@ -189,21 +189,21 @@ The second-order differenced data looks more stationary than the first-order dif
 
 # Model Comparision and Selection
 
-## Model 1 ARIMA(1,0,0)x(0,0,1)[5]
+## Model 1 ARIMA(1,0,3)x(0,0,1)[5]
 
 ```{r}
 acf2(diff_res1)
 ```
-Non-Seasonal: In the ACF plot, there is a sharp cutoff after lag 3, so I chose MA model parameter to be q=3.
-The PACF plot has a significant spike at lag 1, so I chose the AR model parameter to be p=1.
-When eliminating the trend, I did not use log difference to pursue stationary, so the parameter d is chosen to be 0.
+Non-Seasonal: In the ACF plot, there is a sharp cutoff after lag 3, so I chose MA model parameter to be q=3. The PACF plot cuts off after lag 1, so I chose the AR model parameter to be p=1. When eliminating the trend, I did not use stabilizing transformation to pursue stationary, so the parameter d is chosen to be 0.
+P is 1 because ACF shows declining acf at 5, 10, 15 and PACF shows spike at 5.
+
 Seasonal: After eliminating trend by exponential smoothing, I differenced the data once at lag 5, so I chose S to be 5 as the seasonal period of the model. The process of estimating the rest of seasonal parameters is similar to the non-seasonal part. 
-Around lags of multiple of 5, the PACF plot shows negative spikes at 5, 10, and 15, while in the ACF plot, there is only a cluster of negative spikes around lag 5. So I chose a seasonal ARMA(2, 1) model.
+Around lags of multiple of 5, the PACF plot shows negative spikes at 5, 10, and 15, while the ACF plot cuts off after lag 5. So I chose a seasonal MA(0, 1) model.
 I also used auto.arima function to check the parameter, showing the terms are quite similar.
 
 ```{r}
 auto.arima(diff_res1)
-model1 <- sarima(res1, p = 2, d = 0, q = 3, P = 2, D = 0, Q = 1, S = 5)
+model1 <- sarima(res1, p = 1, d = 0, q = 3, P = 0, D = 0, Q = 1, S = 5)
 model1$AIC
 model1$AICc
 model1$BIC
@@ -214,18 +214,39 @@ In the ACF plot of residuals, almost all the lines lie within blue band, and the
 
 
 ```{r}
-start <- 250
+start <- 200
 end <- 290
 sum_squared_errors <- 0
+
 for (i in start:end) {
-train <- window(filtered_stock, end = i - 0.001)
-test <- window(filtered_stock, start = i, end = i + 10 - 0.01)
-m1_forecast <- forecast(ets(train), h = 5)
-sum_squared_errors[] = sum_squared_errors[] + sum((m1_forecast[['mean']]-test)^2)
+train <- window(stock_300$Close, end = i - 0.001)
+test <- window(stock_300$Close, start = i, end = i + 10 - 0.01)
+exp_forecast <- forecast(ets(train, alpha =0.9), h = 10)
+
+res <- exp_forecast$residuals
+
+res_pred <- sarima.for(res, n.ahead = 10,  p = 1, d = 0, q = 3, P = 0, D = 0, Q = 1, S = 5)
+
+m1_pred <- exp_forecast$mean + res_pred$pred
+
+sum_squared_errors[] = sum_squared_errors[] + sum((m1_pred - test)^2)
 }
 
 sum_squared_errors / (end - start + 1)
 
+
+#test code
+# train <- window(stock_300$Close, end = 200 - 0.001)
+# test <- window(stock_300$Close, start = 200, end = 200 + 10 - 0.01)
+# exp_forecast <- forecast(ets(train, alpha =0.9), h = 10)
+# res <- exp_forecast$residuals
+# res
+# res_pred <- sarima.for(res, n.ahead = 10,  p = 1, d = 0, q = 3, P = 0, D = 0, Q = 1, S = 5)
+# res_pred$pred
+# exp_forecast$mean
+# m1_pred <- exp_forecast$mean + res_pred$pred
+# m1_pred 
+# sum((m1_pred - test)^2)
 ```
 
 # Final Model
