@@ -1,0 +1,112 @@
+---
+title: "project_kevin"
+author: "Kevin Sun"
+date: "11/8/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r load data}
+library(astsa)
+pgram = function(x) {
+  # This function calculates the periodogram for Fourier frequencies up to the
+  # Nyquist limit.  As a side-effect, it also produces a plot of the periodogram
+  # Input:
+  #   x (numeric|ts): the sample vector or time-series
+  # Output:
+  #   numeric: a vector of floor(N/2) values, the periodogram
+  
+  N = length(x)
+  m = floor(N / 2)
+  bj = fft(x)[2:(m+1)] # Don't need b0, second half is redundant
+  
+  pgram = abs(bj)^2 / N
+  plot(pgram[0:40], type = "h")
+  abline(h = 0)
+  
+  return(pgram)
+}
+tsla <- read.csv("~/Desktop/stat153_project/TSLA_data.csv")
+```
+
+```{r}
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+y = (tsla$Low + tsla$High)/2
+t = time(tsla$Date)
+```
+
+```{r}
+plot(y)
+```
+
+```{r}
+acf2(y)
+```
+```{r}
+v = log(y)
+acf2(diff(v))
+```
+```{r}
+model_1 = sarima(v,5,3,3)
+```
+```{r}
+model_1$AIC;model_1$AICc;model_1$BIC
+```
+
+```{r}
+
+pgram(y[2100:length(y)])
+```
+
+```{r,echo=FALSE}
+y_ = y[2100:(length(y)-100)]
+accuracy_1 = c()
+for(k in 0:12){
+  Nt <- 7
+  N <- length(y_) - 1 - Nt * k
+  x = c(1:N)
+  new = data.frame(x = c((N + 1):(N + Nt)))
+  train <- y_[1:N]
+  test <- y_[(N+1):(N + Nt)]
+  mod1_pred <- sarima.for(train, n.ahead = Nt, p = 5, d = 3, q = 3)
+  accuracy_1 = append(accuracy_1, (mean((test - as.vector(mod1_pred$pred))^2))^0.5)
+}
+
+cv1 = mean(accuracy_1)
+```
+```{r}
+accuracy_1
+```
+
+
+```{r}
+plot(accuracy_1)
+```
+```{r}
+plot(y)
+```
+
+
+
+
+
+
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
