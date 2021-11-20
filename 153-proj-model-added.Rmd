@@ -157,10 +157,37 @@ The second-order differenced time series is more stationary than the first-order
 Here we fit seasonal ARMA model of the seasonal differenced residuals after reducing the trend using exponential smoothing.
 
 ```{r}
-model2 <- sarima(diff_res, p = 1, d = 0, q = 1, P = 0, D = 1, Q = 2, S = 5)
+acf2(diff_res)
 ```
 
-Comments:
+From the acf and pacf plots of the differenced residuals above we can observe negative spike at lag = 5 for both plots. Neither the acf or the pacf plot shows reasonable cutoff. So here we need to choose a model where p > 0 and q > 0.
+
+First, using auto.arima() to see the model suggested by R:
+
+```{r}
+auto.arima(diff_res)
+```
+
+```{r}
+trial <- sarima(diff_res, p = 2, d = 0, q = 2, P = 0, D = 0, Q = 0, S = 0)
+```
+```{r}
+trial$AIC
+```
+
+```{r}
+trial$AICc
+```
+
+```{r}
+trial$BIC
+```
+
+From the performance of the model recommended by R presented above, we can see that the model does not pass the Ljung-Box test (all the p-values are below the blue band). Combined with my observations from the acf and pacf plots, I adjusted the model parameters and tried the lower the AIC, AICc, and BIC values of the model at the same time. In the end, keeping other parameters unchanged, I reduced the values for p and q from 2 to 1, and chose S = 5 and Q = 2, and the model presented p-values lying far beyond the blue band in the Ljung-Box statistic plot with relatively lower AIC, AICc, and BIC values than before:
+
+```{r}
+model2 <- sarima(diff_res, p = 1, d = 0, q = 1, P = 0, D = 0, Q = 2, S = 5)
+```
 
 From the acf plot of the residuals, we can see that most of the sample residuals autocorrelations fit nicely inside the confidence band. From the normal q-q plot of the stanard residuals we can see that normal distribution is a convincing assumption. We also have large p-values that suggests weak groupwise residual autocorrelations in the plot for Ljung-Box statistic. The model seems like a good fit.
 
@@ -178,7 +205,7 @@ model2$AICc
 model2$BIC
 ```
 
-We perform time-series cross validation on the last 100 data points. For the model, we generate forecasts for every 10 days (2 weeks) and compute the sum of squares of errors of the forecasts. Then average the sum of squares of errors of forecasts over the days considered, which generates the mse of this model.
+We then perform time-series cross validation. For this model, we generate forecasts for every 10 days (2 weeks) and compute the sum of squares of errors of the forecasts. Then average the sum of squares of errors of forecasts over the days considered, which generates the mse of this model.
 
 ```{r}
 # perform cross validation evaluation
@@ -193,7 +220,7 @@ n = (end_day - start_day) / jump
 for (k in start_day:end_day) {
   train <- window(data, end=k-0.001)
   test <- window(data, start=k, end=k + forward_time - 0.01)
-  res_model <- sarima.for(diff_res, n.ahead = forward_time, p = 1, d = 0, q = 1, P = 0, D = 1, Q = 2, S = 5)
+  res_model <- sarima.for(diff_res, n.ahead = forward_time, p = 1, d = 0, q = 1, P = 0, D = 0, Q = 2, S = 5)
   trend_prediction <- ses(train, alpha=0.9, h=forward_time)
   res_prediction <- res_model$pred
   print(trend_prediction)
