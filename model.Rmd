@@ -1,6 +1,6 @@
 ---
 title: "Stats 153 Project - Zoey"
-output: html_document
+output: pdf_document
 ---
 ```{r include = FALSE}
 # Template source: https://github.com/alexpghayes/rmarkdown_homework_template
@@ -36,23 +36,32 @@ plot.ts(data, main="TSLA stock closure price data", ylab="Daily closure price")
 ```
 
 ### Models considered: Second Order Differencing + ARMA
-
-We try to pursue stationary first. We begin by exploring the differencing on stability transformed data. Intuitively, the stock market will operate 5 days per week. Therefore we can try to use differencing with lag 5. Also, a second order differencing with lag = 1 will help.
+ 
+Second order differencing, observe the data, the data seems stationary without obvioud trend or seasonality. 
 
 ```{r}
-diff = diff(data, lag=5)
+diff = diff(data, lag=1)
 second_diff = diff(diff, lag = 1)
 plot.ts(second_diff, main="second order differencing on TSLA data")
 acf2(second_diff, main="Series: TSLA closure price data")
 ```
 #### Evaluation
+
 Evaluating AIC, BIC, AICc, and time-series cross validation. Evaluate model based on how well they predict future values. 
-Observe there's a bump on lag = 5 on both acf and pacf. For ACF, there is a cutoff. For PACF, it is exponentially decay with lag period = 5. Choose model: (0, 1, 0)(0, 1, 1)[5]. The model looks well on Ljung-Box statistic with all p values above 0.05. Also the ACF of residuals shows no ACF go beyond two blue band. 
+Choose model: (1, 2, 1)(0, 0, 0)[0]. This is because observing ACF plot on data after second order differencing, there is a cut off on approximately lag=1, and Recall that for MA(q) model, the sample ACF will contain zero values for lag $|h|>q$. Therefore we try MA(1) model. Observing partial ACF plot, there is an exponential decay, indicating we should use an ARMA(p, q) model. We use the function auto.arima to build intuition on what p, q value to choose. 
 ```{r}
-model1 <- sarima(data, p=0, d=1, q=0, P=0, D=1, Q=1, S=5)
+auto.arima(second_diff)
+```
+The model looks well on Ljung-Box statistic with all p values above 0.05. Also the ACF of residuals shows no ACF go beyond two blue band.
+
+```{r}
+model1 <- sarima(data, p=1, d=2, q=1, P=0, D=0, Q=0, S=0)
 cat("AIC", model1$AIC)
 cat("BIC", model1$BIC)
 cat("AICc", model1$AICc)
+```
+
+```{r}
 # cross validation
 start_day <- 250
 end_day <- 290
@@ -74,91 +83,91 @@ cat("cross validation error", error)
 ```
 
 ### Model considered: Exponential Smoothing
-In this model, we choose exponential smoothing with weight $\alpha = 0.8$. We calculate $\hat{y}_{t+1} = \alpha y_t + \alpha(1-\alpha) y_{t-1} + ... + \alpha (1-\alpha)^{t-1}y_1$, where $0<\alpha<1$.
+<!-- In this model, we choose exponential smoothing with weight $\alpha = 0.8$. We calculate $\hat{y}_{t+1} = \alpha y_t + \alpha(1-\alpha) y_{t-1} + ... + \alpha (1-\alpha)^{t-1}y_1$, where $0<\alpha<1$. -->
 
-First, we explore and choose a good alpha value.
-```{r}
-# code citation: http://uc-r.github.io/ts_exp_smoothing
-# create training and validation of stock data
-data.train = window(data, end=250)
-data.test = window(data, start=251)
-forward_time = 50
-# simple forecast try
-ses.data <- ses(data.train, alpha=0.9, h=forward_time)
-autoplot(ses.data)
-print(typeof(ses.data$fitted))
-```
+<!-- First, we explore and choose a good alpha value. -->
+<!-- ```{r} -->
+<!-- # code citation: http://uc-r.github.io/ts_exp_smoothing -->
+<!-- # create training and validation of stock data -->
+<!-- data.train = window(data, end=250) -->
+<!-- data.test = window(data, start=251) -->
+<!-- forward_time = 50 -->
+<!-- # simple forecast try -->
+<!-- ses.data <- ses(data.train, alpha=0.9, h=forward_time) -->
+<!-- autoplot(ses.data) -->
+<!-- print(typeof(ses.data$fitted)) -->
+<!-- ``` -->
 
-```{r}
-# identify optimal alpha parameter
-alpha <- seq(.01, .99, by = .01)
-RMSE <- NA
-for(i in seq_along(alpha)) {
-  fit <- ses(data.train, alpha = alpha[i], h = forward_time)
-  RMSE[i] <- accuracy(fit, data.test)[2,2]
-}
+<!-- ```{r} -->
+<!-- # identify optimal alpha parameter -->
+<!-- alpha <- seq(.01, .99, by = .01) -->
+<!-- RMSE <- NA -->
+<!-- for(i in seq_along(alpha)) { -->
+<!--   fit <- ses(data.train, alpha = alpha[i], h = forward_time) -->
+<!--   RMSE[i] <- accuracy(fit, data.test)[2,2] -->
+<!-- } -->
 
-# convert to a data frame and identify min alpha value
-alpha.fit <- data_frame(alpha, RMSE)
-alpha.min <- filter(alpha.fit, RMSE == min(RMSE))
+<!-- # convert to a data frame and identify min alpha value -->
+<!-- alpha.fit <- data_frame(alpha, RMSE) -->
+<!-- alpha.min <- filter(alpha.fit, RMSE == min(RMSE)) -->
 
-# plot RMSE vs. alpha
-ggplot(alpha.fit, aes(alpha, RMSE)) +
-  geom_line() +
-  geom_point(data = alpha.min, aes(alpha, RMSE), size = 2, color = "blue") 
-```
+<!-- # plot RMSE vs. alpha -->
+<!-- ggplot(alpha.fit, aes(alpha, RMSE)) + -->
+<!--   geom_line() + -->
+<!--   geom_point(data = alpha.min, aes(alpha, RMSE), size = 2, color = "blue")  -->
+<!-- ``` -->
 
 
-From above alpha v.s. RMSE graph, we use the optimal value $\alpha = 0.9$ (TODO: check correctness). Get residual data by removing the trend of exponential smoothing.
-```{r}
-# code from Xiangxi Wang
-# exponential filter 
-alpha = 0.9
-lag = 10
-filter_weights = alpha^(1:lag)
-filter_weights = filter_weights/sum(filter_weights)
-filtered_stock = stats::filter(data, filter_weights, sides = 1)
-# Plot the original data and fitted values
-plot(t, data, type = 'l', main = "(a)", xlab = "Time", ylab = "Close Price")
-lines(t, filtered_stock, col = 'red')
+<!-- From above alpha v.s. RMSE graph, we use the optimal value $\alpha = 0.9$ (TODO: check correctness). Get residual data by removing the trend of exponential smoothing. -->
+<!-- ```{r} -->
+<!-- # code from Xiangxi Wang -->
+<!-- # exponential filter  -->
+<!-- alpha = 0.9 -->
+<!-- lag = 10 -->
+<!-- filter_weights = alpha^(1:lag) -->
+<!-- filter_weights = filter_weights/sum(filter_weights) -->
+<!-- filtered_stock = stats::filter(data, filter_weights, sides = 1) -->
+<!-- # Plot the original data and fitted values -->
+<!-- plot(t, data, type = 'l', main = "(a)", xlab = "Time", ylab = "Close Price") -->
+<!-- lines(t, filtered_stock, col = 'red') -->
 
-filtered_stock = na.omit(filtered_stock)
-log_stock = data[-1:-(lag - 1)]
-res = log_stock - filtered_stock
-plot(res, main = "(b)", xlab = "Time", ylab = "Residuals")
-```
-Now we try to fit seasonal ARMA model on residuals after removing the trend.
+<!-- filtered_stock = na.omit(filtered_stock) -->
+<!-- log_stock = data[-1:-(lag - 1)] -->
+<!-- res = log_stock - filtered_stock -->
+<!-- plot(res, main = "(b)", xlab = "Time", ylab = "Residuals") -->
+<!-- ``` -->
+<!-- Now we try to fit seasonal ARMA model on residuals after removing the trend. -->
 
-```{r}
-# fit model on residual
-acf2(res)
-model2 <- sarima(res, p = 2, d = 1, q = 1, P = 0, D = 0, Q = 1, S = 5)
-model2$AIC
-model2$AICc
-model2$BIC
-```
+<!-- ```{r} -->
+<!-- # fit model on residual -->
+<!-- acf2(res) -->
+<!-- model2 <- sarima(res, p = 2, d = 1, q = 1, P = 0, D = 0, Q = 1, S = 5) -->
+<!-- model2$AIC -->
+<!-- model2$AICc -->
+<!-- model2$BIC -->
+<!-- ``` -->
 
-```{r}
-# perform cross validation evaluation
-start_day <- 250
-end_day <- 290
-jump = 10
-error = 0
-forward_time = 10
-# we are performing n-fold validation
-n = (end_day - start_day) / jump
+<!-- ```{r} -->
+<!-- # perform cross validation evaluation -->
+<!-- start_day <- 250 -->
+<!-- end_day <- 290 -->
+<!-- jump = 10 -->
+<!-- error = 0 -->
+<!-- forward_time = 10 -->
+<!-- # we are performing n-fold validation -->
+<!-- n = (end_day - start_day) / jump -->
 
-for (k in start_day:end_day) {
-  train <- window(data, end=k-0.001)
-  test <- window(data, start=k, end=k + forward_time - 0.01)
-  res_model <- sarima.for(res, n.ahead = forward_time,  p = 2, d = 1, q = 1, P = 0, D = 0, Q = 1, S = 5)
-  trend_prediction <- ses(train, alpha=0.9, h=forward_time)
-  res_prediction <- res_model$pred
-  print(trend_prediction)
-  error <- error + sum((res_prediction - test)^2)
-  k = k + 10
-}
-error = error / n
-cat("cross validation error", error)
-```
+<!-- for (k in start_day:end_day) { -->
+<!--   train <- window(data, end=k-0.001) -->
+<!--   test <- window(data, start=k, end=k + forward_time - 0.01) -->
+<!--   res_model <- sarima.for(res, n.ahead = forward_time,  p = 2, d = 1, q = 1, P = 0, D = 0, Q = 1, S = 5) -->
+<!--   trend_prediction <- ses(train, alpha=0.9, h=forward_time) -->
+<!--   res_prediction <- res_model$pred -->
+<!--   print(trend_prediction) -->
+<!--   error <- error + sum((res_prediction - test)^2) -->
+<!--   k = k + 10 -->
+<!-- } -->
+<!-- error = error / n -->
+<!-- cat("cross validation error", error) -->
+<!-- ``` -->
 
