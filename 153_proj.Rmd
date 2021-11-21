@@ -144,29 +144,78 @@ plot(diff_res, main = "(a)", ylab = "Differenced Data")
 
 Indeed, now the differenced residuals become more stationary. There seems to be a contradiction that recalling in EDA, we claim that there is not a clear seasonality in our data. However, the effect of the seasonal differencing here implies a possible seasonality with period $d=5$. We think it might be due to that the seasonal differencing is actually removing the remaining trend left by the exponential smoothing instead of the seasonality. Nevertheless, We believe that the time series of the differenced residuals shown in Figure 5(a) is stationary enough for us to build ARMA models on it. For the convenience, we use "residuals" to represent "the seasonal differenced residuals" in the following two subsections. 
 
-### ARMA A: $ARIMA(1,0,3)\times(0,0,1)[5]$
+### ARMA 1A: $ARIMA(1,0,3)\times(0,0,1)[5]$
 
 After acquiring a approximately stationary residuals from the signal model, we use ARMA model to further model the residuals so that we can predict future residuals reasonably. Then, summing the predicted residuals and signals gives us the prediction of the original time series, stock price. To obtain the intuition for choosing ARMA model, we use the sample ACF and PACF plots of the residuals shown in Figure TODO.
 
-```{r, fig.cap="The sample ACF and PACF plots of the residuals from expo. smoothing", out.width="75%", results='hide'}
+```{r, fig.cap="The sample ACF and PACF plots of the residuals from expo. smoothing", fig.height = 3, out.width="75%", results='hide'}
 # sample ACF and PACF plots
 acf2(diff_res)
+```
+In the ACF plot, if we ignore lag $5$ temporarily, we observe a sharp cutoff after lag $3$, so $q = 3$ might be a reasonable choice. Similarly, if we ignore the lags around the multiples of $5$ temporarily, the PACF plot has a cutoff after lag $1$, so $p = 1$ might be a reasonable choice. To handle the spikes at lag $5$ in ACF and lag multiples of $5$ in PACF, choosing seasonal $MA(1)$ with period $d = 5$ might be reasonable. To increase the credibility of our choices, we apply `auto.arima` on the residuals and receive an $ARIMA(2,0,3)\times(0,0,0)[5]$ model, which is similar to our candidate model ARIMA(1,0,3)$\times$(0,0,1)[5], although all the Ljung-Box statistics of $ARIMA(2,0,3)\times(0,0,0)[5]$ have p-values smaller than $0.05$. 
 
+```{r, results='hide', fig.height=3, out.width = "80%", fig.cap="Model diagnostics plots of ARIMA(1,0,3)x(0,0,1)[5]"}
+model_1A <- sarima(diff_res, p = 1, d = 0, q = 3, P = 0, D = 0, Q = 1, S = 5)
+```
+
+```{r, include=FALSE}
+# model selected by auto.arima
 auto.arima(diff_res)
-```
-In the ACF plot, if we ignore lag $5$ temporarily, we observe a sharp cutoff after lag $3$, so $q = 3$ might be a reasonable choice. Similarly, if we ignore the lags around the multiples of $5$ temporarily, the PACF plot has a cutoff after lag $1$, so $p = 1$ might be a reasonable choice. To handle the spikes at lag $5$ in ACF and lag multiples of $5$ in PACF, choosing seasonal $MA(1)$ with period $d = 5$ might be reasonable. To increase the credibility of our choices, we apply `auto.arima` on the residuals and receive an $ARIMA(2,0,3)\times(0,0,0)[5]$ model, which is close to our candidate model ARIMA(1,0,3)$\times$(0,0,1)[5].
-
-```{r, results='hide', fig.height=3, fig.cap="Model diagnostics plots of ARIMA(1,0,3)x(0,0,1)[5]"}
-model_A <- sarima(diff_res, p = 1, d = 0, q = 3, P = 0, D = 0, Q = 1, S = 5)
+sarima(diff_res, p = 2, d = 0, q = 3, P = 0, D = 0, Q = 0, S = 0)
 ```
 
-To assess our model, we visualize different model diagnostics methods in Figure TODO. In the ACF plot of residuals, almost all the spikes lie within 95% confidence interval. The normal Q-Q plot verifies the normality assumption as the points fit the blue line very well. The p-values of all the Ljung-Box statistics are above $0.05$, so we fail to reject the null hypothesis that the data was generated from our candidate ARMA model. In summary, all the model diagnostics methods imply that our candidate ARMA model is considerably reasonable. We call this model "ARMA A".
+To assess our model, we visualize different model diagnostics methods in Figure TODO. The standardized residuals seem to have a i.i.d. standard normal distribution with a slightly more large values in magnitude. In the ACF plot of residuals, almost all the spikes lie within 95% confidence interval. The normal q-q plot implies a slightly fatter tail distribution than the normal distribution, but we can still claim the validity of the normality assumption. The p-values of all the Ljung-Box statistics are above $0.05$, so we fail to reject the null hypothesis that the data was generated from our candidate ARMA model. In summary, all the model diagnostics methods imply that our candidate ARMA model is considerably reasonable. We call this model "ARMA 1A".
+
+### ARMA 1B: $ARIMA(1,0,1)\times(0,0,1)[5]$
+
+We provide a second way to model the seasonal differenced residuals.
+
+From the ACF and PACF plots of the residuals in Figure TODO, we can observe a negative spike at lag = 5 for both plots. If we do not ignore the spikes at some lags like we did in ARMA 1A, neither the ACF or the PACF plot has a reasonable cutoff. Thus, we need to choose both $p > 0$ and $q > 0$.
+
+Recall that `auto.arima()` returns a $ARIMA(2,0,3)\times(0,0,0)[5]$ model but with bad diagnostics evaluation. Nonetheless, we can still treat it as a reference model and develop a better model based on it. Combining with the previous observations in the ACF and PACF plots, we experiment with different orders and look for the one with lowest AIC, AICc, and BIC values. See the code appendix for more details. We end up with $ARIMA(1,0,1)\times(0,0,1)[5]$ model.
+
+```{r, include = FALSE}
+attempt1 <- sarima(diff_res, p = 2, d = 0, q = 2, P = 0, D = 0, Q = 0, S = 5)
+# does not pass the Ljung-box test
+
+attempt2 <- sarima(diff_res, p = 2, d = 0, q = 2, P = 1, D = 0, Q = 0, S = 5)
+# does not pass the Ljung-box test
+
+attempt3 <- sarima(diff_res, p = 2, d = 0, q = 2, P = 0, D = 0, Q = 1, S = 5)
+print(attempt3$AIC)
+print(attempt3$AICc)
+print(attempt3$BIC)
+
+attempt4 <- sarima(diff_res, p = 1, d = 0, q = 2, P = 0, D = 0, Q = 1, S = 5)
+print(attempt4$AIC)
+print(attempt4$AICc)
+print(attempt4$BIC)
+
+attempt5 <- sarima(diff_res, p = 1, d = 0, q = 1, P = 0, D = 0, Q = 1, S = 5)
+print(attempt5$AIC)
+print(attempt5$AICc)
+print(attempt5$BIC)
+
+attempt6 <- sarima(diff_res, p = 0, d = 0, q = 0, P = 0, D = 0, Q = 1, S = 5)
+print(attempt6$AIC)
+print(attempt6$AICc)
+print(attempt6$BIC)
+
+# From these previous attempts we can see that attempt 5 generates the lowest AIC, AICc, and BIC values,
+# and passes the Ljung-Box test.
+```
+
+```{r, results='hide', fig.height=3, out.width = "80%",fig.cap="Model diagnostics plots of ARIMA(1,0,1)x(0,0,2)[5]"}
+model_1B <- sarima(diff_res, p = 1, d = 0, q = 1, P = 0, D = 0, Q = 1, S = 5)
+```
+
+The diagnostics plots in Figure TODO have a highly similar performance to those of ARMA 1A. Thus, we consider this model as a reasonable one and call it "ARMA 1B". 
 
 ## Non-parametric Signal Model: second-order differencing 
 
 In this model, we choose the second-order differencing to remove the trend. We observe that after the first-order differencing, there is still some trend pattern, such as the increasing one between $270$ and $300$, as shown by Figure TODO. This matches our previous analysis that the trend of our data is nonlinear in EDA. Thus, we take another differencing and acquire the second-order differencing data shown in Figure TODO.
 
-```{r, fig.cap="(a): The first-order differenced data. (b): The second-order differenced data.", fig.height=3}
+```{r, fig.cap="(a): The first-order differenced data. (b): The second-order differenced data.", fig.height=2}
 par(mfrow = c(1, 2), cex = 0.65, lwd = 0.5)
 
 # first order differencing
@@ -177,8 +226,97 @@ stock_dd = diff(stock_d)
 plot(stock_d, type = 'l', main = "(a)", ylab = "Differenced Data")
 plot(stock_dd, type = 'l', main = "(b)", ylab = "Differenced Data")
 ```
-The second-order differenced time series is more stationary than the first-order differenced time series. We can keep trying more higher-order differencings, but they may overfit our data. Therefore, we think the second-order differenced time series is already stationary enough for us to build ARMA model on it.
 
+The second-order differenced time series, denoted by $Z_t$, is more stationary than the first-order differenced time series. We can keep trying more higher-order differencings, but they may overfit our data. Therefore, we stop at the second-order differenced time series $Z_t$ which is already stationary enough for us to build ARMA model on it.
+
+### ARMA 2A: $ARIMA(1,0,1)\times(0,0,0)[0]$
+
+Based on $Z_t$, we continue our modeling by finding and fitting a suitable ARMA model on it. We first plot the sample ACF and PACF of $Z_t$ as we did for the seasonal differenced residuals to obtain some intuition.
+
+```{r, fig.cap="The sample ACF and PACF plots of $Z_t$", fig.height = 3, out.width="75%", results='hide'}
+# sample ACF and PACF plots
+acf2(stock_dd)
+```
+
+From the ACF plot of $Z_t$, we observe a sharp a cutoff after lag $1$, so MA(1) seems to be a reasonable choice. Also,  we observe an exponential decay in the PACF plot, indicating that we should use an $ARMA(p, 1)$ model for some $q$. We use the `auto.arima()` to help us find the suitable $p$, and we acquire an $ARIMA(1,0,1)\times(0,0,0)[0]$ model on $Z_t$. Since we have done a second-order differencing with lag $1$ on the original time series, essentially we use an $ARIMA(1, 2, 1)\times(0,0,0)[0]$ on the original time series. As usual, we plot the model diagnostics plots in Figure TODO to assess our model.
+
+```{r, include = FALSE}
+auto.arima(stock_dd, start.q = 1)
+```
+
+```{r, results='hide', fig.height=3, out.width = "80%",fig.cap="Model diagnostics plots of ARIMA(1,0,1)x(0,0,0)[0]"}
+model_2A <- sarima(stock_dd, p=1, d=0, q=1, P=0, D=0, Q=0, S=0)
+```
+The performance of the diagnostics plots is similar to those of ARMA 1A and 1B models, which means our model choice here is reasonable. 
+
+### ARMA 2B: 
+
+We provide a second way to model the second-ordered differenced time series $Z_t$.
+
+In the PACF plot of $Z_t$ in Figure TODO, the magnitude of PACF is decreasing significantly from lag $1$ to lag $5$. From the ACF plot of $Z_t$, we observe an evident cutoff of magnitude of ACF occurs at lag $1$. Therefore, it is reasonable to fit $Z_t$ with a MA model. However, clearly the ACF and PACF plot do not strictly match the theoretical ones of $MA(q)$ where $q \in \{4,5,6\}$ model, so we experiment with multiple combinations of $q \in \{4,5,6\}$ and of $p \in \{0,1\}$. We choose $p \in \{0,1\}$ because the model returned by `auto.arima()` has $p = 1$. 
+
+```{r, include=FALSE}
+v = stock_dd
+
+accuracy_1 = c()
+accuracy_2 = c()
+accuracy_3 = c()
+accuracy_4 = c()
+accuracy_5 = c()
+accuracy_6 = c()
+
+# compute cross-validation errors of each model
+for(k in 0:12){
+  Nt <- 10
+  N <- length(v) - 10 - Nt * k
+  x = c(1:N)
+  new = data.frame(x = c((N + 1):(N + Nt)))
+  train <- v[1:N]
+  test <- v[(N+1):(N + Nt)]
+  mod1_pred <- sarima.for(train, n.ahead = Nt, p = 0, d = 0, q = 4, plot = FALSE)
+  mod2_pred <- sarima.for(train, n.ahead = Nt, p = 0, d = 0, q = 5, plot = FALSE)
+  mod3_pred <- sarima.for(train, n.ahead = Nt, p = 0, d = 0, q = 6, plot = FALSE)
+  mod4_pred <- sarima.for(train, n.ahead = Nt, p = 1, d = 0, q = 4, plot = FALSE)
+  mod5_pred <- sarima.for(train, n.ahead = Nt, p = 1, d = 0, q = 5, plot = FALSE)
+  mod6_pred <- sarima.for(train, n.ahead = Nt, p = 1, d = 0, q = 6, plot = FALSE)
+  accuracy_1 = append(accuracy_1, (mean((test - as.vector(mod1_pred$pred))^2))^0.5)
+  accuracy_2 = append(accuracy_2, (mean((test - as.vector(mod2_pred$pred))^2))^0.5)
+  accuracy_3 = append(accuracy_3, (mean((test - as.vector(mod3_pred$pred))^2))^0.5)
+  accuracy_4 = append(accuracy_4, (mean((test - as.vector(mod4_pred$pred))^2))^0.5)
+  accuracy_5 = append(accuracy_5, (mean((test - as.vector(mod5_pred$pred))^2))^0.5)
+  accuracy_6 = append(accuracy_6, (mean((test - as.vector(mod6_pred$pred))^2))^0.5)
+}
+cv1 = mean(accuracy_1)
+cv2 = mean(accuracy_2)
+cv3 = mean(accuracy_3)
+cv4 = mean(accuracy_4)
+cv5 = mean(accuracy_5)
+cv6 = mean(accuracy_6)
+
+# fit each model
+model_1 = sarima(v, p = 0, d = 0, q = 4)
+model_2 = sarima(v, p = 0, d = 0, q = 5)
+model_3 = sarima(v, p = 0, d = 0, q = 6)
+model_4 = sarima(v, p = 1, d = 0, q = 4)
+model_5 = sarima(v, p = 1, d = 0, q = 5)
+model_6 = sarima(v, p = 1, d = 0, q = 6)
+
+# extract the criterions of each model
+model = c("MA(4)", "MA(5)","MA(6)","ARMA(1,4)","ARMA(1,5)","ARMA(1,6)")
+cves = c(cv1,cv2,cv3,cv4,cv5,cv6)
+aic = c(model_1$AIC,model_2$AIC,model_3$AIC,model_4$AIC,model_5$AIC,model_6$AIC)
+aicc = c(model_1$AICc,model_2$AICc,model_3$AICc,model_4$AICc,model_5$AICc,model_6$AICc)
+bic = c(model_1$BIC,model_2$BIC,model_3$BIC,model_4$BIC,model_5$BIC,model_6$BIC)
+s <- data.frame("Model" = model, "Crossvalidation error"=cves,"AIC"=aic,"AICc"=aicc,"BIC"=bic)
+s
+```
+
+With consideration of cross-validation error, model AIC, model AICc, model BIC, the MA(4) model has the best performance. See the code appendix for more details about selection. We plot the model diagnostics methods in Figure TODO to further assess MA(4$. 
+
+```{r, results='hide', fig.height=3, out.width = "80%",fig.cap="Model diagnostics plots of ARIMA(0,0,4)x(0,0,0)[0]"}
+model_2B <- sarima(stock_dd, p=0, d=0, q=4, P=0, D=0, Q=0, S=0)
+```
+The performance of the diagnostics plots is similar to that of the previous three models, which means our model choice here is reasonable. 
 
 # Model Comparision and Selection
 
