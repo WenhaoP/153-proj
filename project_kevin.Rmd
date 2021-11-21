@@ -1,0 +1,141 @@
+---
+title: "project_kevin"
+author: "Kevin Sun"
+date: "11/8/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+Due to the increasing focus on carbon neutrality, the industry of replacing non-sustainable energy with sustainable energy has boomed in the past few years. Electricity, as a relatively environment-friendly energy, has been considered as replacement of some traditional energy, such as gasoline and diesel.  Among all those enterprises pursing commercialized carbon neutrality, TSLA, as the largest electric car company, has been pioneering the fashion and aiming to transition the world to electric mobility. As the reflection of belief of the public, the stock price of TSLA has been sedentary for a period of time and has no evident increase until recent years. Therefore, we pick up the close price of TSLA stock of the recent 300 days to explore. In the following experiments, we utilize differencing, exponential smoothing, and fitting ARMA model, and combination of them to approximate the series. 
+
+```{r load data}
+library(astsa)
+pgram = function(x) {
+  # This function calculates the periodogram for Fourier frequencies up to the
+  # Nyquist limit.  As a side-effect, it also produces a plot of the periodogram
+  # Input:
+  #   x (numeric|ts): the sample vector or time-series
+  # Output:
+  #   numeric: a vector of floor(N/2) values, the periodogram
+  
+  N = length(x)
+  m = floor(N / 2)
+  bj = fft(x)[2:(m+1)] # Don't need b0, second half is redundant
+  
+  pgram = abs(bj)^2 / N
+  plot(pgram, type = "h")
+  abline(h = 0)
+  
+  return(pgram)
+}
+library(readr)
+tsla <- read_csv("~/Desktop/153-proj-main/data/TSLA.csv")
+```
+
+```{r pressure, echo=FALSE}
+Tsla = tsla$Close
+tsla300 = Tsla[(length(Tsla)-299):length(Tsla)]
+t_ = time(tsla$Date)
+t = t_[(length(t_)-299):length(t_)]
+```
+
+
+```{r}
+plot.ts(tsla)
+```
+
+# Data description
+
+The TSLA stock price comes from Yahoo Finance (https://finance.yahoo.com). The stock price dataset consists of open price, close price, high price, and low price. Since they has roughly similar trend, we choose close price to experiment on. The whole volume of data, which contains 2791 data points, has variance 39768.49, max price 1208.59, min price 4.01, mean price 112.4271. The recent-300-day data has variance 22697.1, max price 1208.59, min price 330.21, mean price 654.1912.
+
+```{r}
+variance  = c(var(Tsla),var(tsla300))
+maxi = c(max(Tsla),max(tsla300))
+mini = c(min(Tsla),min(tsla300))
+meani = c(mean(Tsla),mean(tsla300))
+len = c(length(Tsla),length(tsla300))
+desc <- data.frame("Data" = c("whole volume Tsla data", "recent-300-day Tsla data"), "Variance" = variance, "Max" = maxi, "Min" = mini, "Mean" = meani, "Size" = len)
+desc
+```
+
+
+
+
+```{r}
+plot.ts(Tsla)
+```
+
+```{r}
+acf2(Tsla);acf2(tsla300)
+```
+
+# ARMA model after second order differencing
+
+
+```{r}
+v = diff(diff(tsla300))
+pgram(v)
+acf2((v))
+```
+On the PACF graph of second order differencing series v, the absolute value of PACF is decreasing significantly from lag 1 to lag 5. On the ACF graph of v, the evident cutoff of absolute value of ACF occurs at lag 1. Therefore, it is reasonable to approximate the series v with MA model. However, the ACF and PACF plot are not strictly fitted on the theoretical $MA(q),q \in \{4,5,6\}$ model, so conduct parameter tuning experiment on q and possibility of $AR(p),p \in \{0,1\}$.
+
+```{r,echo=FALSE}
+accuracy_1 = c()
+accuracy_2 = c()
+accuracy_3 = c()
+accuracy_4 = c()
+accuracy_5 = c()
+accuracy_6 = c()
+for(k in 0:12){
+  Nt <- 10
+  N <- length(v) - 10 - Nt * k
+  x = c(1:N)
+  new = data.frame(x = c((N + 1):(N + Nt)))
+  train <- v[1:N]
+  test <- v[(N+1):(N + Nt)]
+  mod1_pred <- sarima.for(train, n.ahead = Nt, p = 0, d = 0, q = 4)
+  mod2_pred <- sarima.for(train, n.ahead = Nt, p = 0, d = 0, q = 5)
+  mod3_pred <- sarima.for(train, n.ahead = Nt, p = 0, d = 0, q = 6)
+  mod4_pred <- sarima.for(train, n.ahead = Nt, p = 1, d = 0, q = 4)
+  mod5_pred <- sarima.for(train, n.ahead = Nt, p = 1, d = 0, q = 5)
+  mod6_pred <- sarima.for(train, n.ahead = Nt, p = 1, d = 0, q = 6)
+  accuracy_1 = append(accuracy_1, (mean((test - as.vector(mod1_pred$pred))^2))^0.5)
+  accuracy_2 = append(accuracy_2, (mean((test - as.vector(mod2_pred$pred))^2))^0.5)
+  accuracy_3 = append(accuracy_3, (mean((test - as.vector(mod3_pred$pred))^2))^0.5)
+  accuracy_4 = append(accuracy_4, (mean((test - as.vector(mod4_pred$pred))^2))^0.5)
+  accuracy_5 = append(accuracy_5, (mean((test - as.vector(mod5_pred$pred))^2))^0.5)
+  accuracy_6 = append(accuracy_6, (mean((test - as.vector(mod6_pred$pred))^2))^0.5)
+}
+
+cv1 = mean(accuracy_1)
+cv2 = mean(accuracy_2)
+cv3 = mean(accuracy_3)
+cv4 = mean(accuracy_4)
+cv5 = mean(accuracy_5)
+cv6 = mean(accuracy_6)
+```
+```{r}
+model_1 = sarima(v, p = 0, d = 0, q = 4)
+model_2 = sarima(v, p = 0, d = 0, q = 5)
+model_3 = sarima(v, p = 0, d = 0, q = 6)
+model_4 = sarima(v, p = 1, d = 0, q = 4)
+model_5 = sarima(v, p = 1, d = 0, q = 5)
+model_6 = sarima(v, p = 1, d = 0, q = 6)
+
+```
+```{r}
+model = c("MA(4)", "MA(5)","MA(6)","ARMA(1,4)","ARMA(1,5)","ARMA(1,6)")
+cves = c(cv1,cv2,cv3,cv4,cv5,cv6)
+aic = c(model_1$AIC,model_2$AIC,model_3$AIC,model_4$AIC,model_5$AIC,model_6$AIC)
+aicc = c(model_1$AICc,model_2$AICc,model_3$AICc,model_4$AICc,model_5$AICc,model_6$AICc)
+bic = c(model_1$BIC,model_2$BIC,model_3$BIC,model_4$BIC,model_5$BIC,model_6$BIC)
+s <- data.frame("Model" = model, "Crossvalidation error"=cves,"AIC"=aic,"AICc"=aicc,"BIC"=bic)
+s
+```
+
+With consideration of cross validation error, model AIC, model AICc, model BIC, the MA(4) model is the best one to approximate the second order differencing series v. For MA(4) model, the p values for Ljung-Box statistic are very large for all lag h, so MA(4) model passes the test. Besides MA(4) model, the MA(5) and ARMA(1,4) model serve as the second candidate group. In the perspective of cross validation error, ARMA(1,4) performs better than MA(5), while the thing is opposite for the aspect of AIC, AICc, and BIC  statistics. Since discrepancy of the three model's performance statistics is not very large, all the three models can be explored in the further parameter tuning experiment.
