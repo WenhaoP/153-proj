@@ -404,8 +404,9 @@ s <- data.frame(Index = index, "Model" = model, "CV error"=cves,"AIC"=aic,"AICc"
 knitr::kable(s, caption = "Criterion values of each model")
 ```
 
-Interestingly, the models using exponential smoothing to remove the signal have higher cross-validation errors but smaller AIC, AICc, and BIC than the models using second-order differencing to remove the signal. It implies that our exponential smoothing model is more overfitting than the second-order differencing model. Because the average difference between cross-validation errors of second-order differencing models and those of exponential smoothing models is much larger than the the average difference between AIC, AICc, and BIC of two models, we will select one model from two second-order differencing models. Now, since the criterions of these two models are very close to each other, we will simply choose model 3 somewhat arbitrarily.
+Interestingly, the models using exponential smoothing to remove the signal have higher cross-validation errors but smaller AIC, AICc, and BIC than the models using second-order differencing to remove the signal. It could be that our exponential smoothing model is more overfitting than the second-order differencing model. Because the average difference between cross-validation errors of second-order differencing models and those of exponential smoothing models is much larger than the the average difference between AIC, AICc, and BIC of two models, we will select one model from two second-order differencing models. Now, since the criterions of these two models are very close to each other, we will simply choose model 3 somewhat arbitrarily.
 
+There is a caveat that the we extract AIC, BIC, and AICc of these four models directly from their `sarima()` fitted results. However, the exponential smoothing cannot be directly involved in `sarima()` while the second-order differencing can be. This discrepancy might bias the measured criterions. For the simplicity of this project, we ignore this discrepancy, although we recommend further exploration in it.
 
 # Final Model
 
