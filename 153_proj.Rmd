@@ -31,7 +31,11 @@ set.seed(153) # make random results reproducible
 
 # Introduction
 
+Due to the increasing focus on carbon neutrality, the industry of replacing non-sustainable energy with sustainable energy has boomed in the past few years. Electricity, as a relatively environment-friendly energy, has been considered as replacement of some traditional energy, such as gasoline and diesel.  Among all those enterprises pursing commercialized carbon neutrality, TSLA, as the largest electric car company, has been pioneering the fashion and aiming to transition the world to electric mobility. As the reflection of belief of the public, the stock price of TSLA has been sedentary for a period of time and has no evident increase until recent years. Therefore, we pick up the close price of TSLA stock of the recent 300 days to explore. In the following experiments, we utilize differencing, exponential smoothing, and fitting ARMA model, and combination of them to approximate the series. 
+
 # Data Description
+
+The TSLA stock price comes from Yahoo Finance (https://finance.yahoo.com). The stock price dataset consists of open price, close price, high price, and low price of a trading day. Since they has roughly similar trend, we choose close price to experiment on. The whole volume of data, which contains 2791 data points, has variance 39768.49, max price 1208.59, min price 4.01, mean price 112.4271. The recent-300-day data has variance 22697.1, max price 1208.59, min price 330.21, mean price 654.1912.
 
 ```{r}
 # load data
@@ -311,14 +315,97 @@ s <- data.frame("Model" = model, "Crossvalidation error"=cves,"AIC"=aic,"AICc"=a
 s
 ```
 
-With consideration of cross-validation error, model AIC, model AICc, model BIC, the MA(4) model has the best performance. See the code appendix for more details about selection. We plot the model diagnostics methods in Figure TODO to further assess MA(4$. 
+With consideration of cross-validation error, model AIC, model AICc, model BIC, the MA(4) model has the best performance. See the code appendix for more details about selection. We plot the model diagnostics methods in Figure TODO to further assess MA(4) model. 
 
 ```{r, results='hide', fig.height=3, out.width = "80%",fig.cap="Model diagnostics plots of ARIMA(0,0,4)x(0,0,0)[0]"}
 model_2B <- sarima(stock_dd, p=0, d=0, q=4, P=0, D=0, Q=0, S=0)
 ```
-The performance of the diagnostics plots is similar to that of the previous three models, which means our model choice here is reasonable. 
+
+The performance of the diagnostics plots is similar to those of the previous three models, which means our model choice here is reasonable. 
 
 # Model Comparision and Selection
+
+Now, with four carefully chosen models, we need to select a final model that best fits the data. However, it is dangerous to blindly choose an overcomplicated model that can perfectly match the given data because the model may also fit the noise in the data as well. We only want our model capture the true underlying pattern of the data so that it can be generalized to unseen data well. Otherwise, our prediction might be too noisy and far away from the actual value. This issue is known as overfitting. 
+
+To lessen the overfitting issue as much as possible, we compute and compare the AIC, AICc, BIC, and cross-validation error of each model. The first three criterion measures the fitness of a model on the in-sample data while penalizing the complexity of the model. The last one measures the predictability of a model on the out-of-sample data. Then, we will select the model that has the best performance with a comprehensive consideration of all four criterions. See the code appendix for more details about the selection process.
+
+```{r}
+# Here we compute the cross-validation error of each model. We only use the last one hundred
+# data points, which is 1/3 of the entire data, to select the validation set. There are
+# ten validation sets, and each of them contains ten data points. The whole process is 
+# very similar to the classical k-fold cross-validation. In the first iteration, the training
+# set contains the time points 1:200, and the validation set contains the time points 201:210.
+# Then, in the second iteration, the training set contains the time points 1:210, and
+# the validation set contains the time points 211:220. We repeat the similar process, and in 
+# the last iteration, the training set contains the time points 1:290, and the validation set
+# contains the time points 291:300.
+start <- 200
+cv_1A <- 0
+cv_1B <- 0
+cv_2A <- 0
+cv_2B <- 0
+
+for (i in 0:9) {
+  # train-val set split
+  train <- window(stock_300$Close, end = start + i * 10)
+  val <- window(stock_300$Close, start = start + i * 10 + 1, end = start + (i + 1) * 10)
+  
+  # get stationary residuals
+  filtered_train = filter(train, filter_weights, sides = 1)
+  filtered_train = na.omit(filtered_train)
+  cut_train <- train[-1:-(lag - 1)]
+  exp_res = cut_train - filtered_train
+  
+  # exponential smoothing prediction
+  exp_pred = numeric(10)
+  values = tail(train, 10) # store the values for prediction
+  for (i in 1:10){
+    exp_pred[i] = sum(tail(values, 10) * rev(filter_weights)) 
+    values <- append(values, exp_pred[i])
+  }
+  
+  # ARMA prediction
+  arma_1A_pred <- sarima.for(exp_res, n.ahead = 10,  p = 1, d = 0, q = 3, 
+                             P = 0, D = 0, Q = 1, S = 5, plot = FALSE)$pred
+  arma_1B_pred <- sarima.for(exp_res, n.ahead = 10,  p = 1, d = 0, q = 1, 
+                             P = 0, D = 0, Q = 1, S = 5, plot = FALSE)$pred
+  
+  # total prediction
+  pred_1A <- exp_pred + arma_1A_pred
+  pred_1B <- exp_pred + arma_1B_pred
+  pred_2A <- sarima.for(train, n.ahead = 10,  p = 1, d = 2, q = 1, 
+                        P = 0, D = 0, Q = 0, S = 0, plot = FALSE)$pred
+  pred_2B <- sarima.for(train, n.ahead = 10,  p = 0, d = 2, q = 4, 
+                        P = 0, D = 0, Q = 0, S = 0, plot = FALSE)$pred
+  
+  # compute errors
+  cv_1A <- cv_1A + mean((pred_1A - val)^2)
+  cv_1B <- cv_1B + mean((pred_1B - val)^2)
+  cv_2A <- cv_2A + mean((pred_2A - val)^2)
+  cv_2B <- cv_2B + mean((pred_2B - val)^2)
+}
+
+cv_1A = cv_1A / 10
+cv_1B = cv_1B / 10
+cv_2A = cv_2A / 10
+cv_2B = cv_2B / 10
+```
+
+we summarize the criterion of all the models into the following table:
+
+```{r}
+index = c(1, 2, 3, 4)
+model = c("Expo. smoothing + ARMA 1A", "Expo. smoothing + ARMA 1B","2nd-order Diff. + ARMA 2A","2nd-order Diff. + ARMA 2B")
+cves = c(cv_1A, cv_1B, cv_2A, cv_2B)
+aic = c(model_1A$AIC,model_1B$AIC,model_2A$AIC,model_2B$AIC)
+aicc = c(model_1A$AICc,model_1B$AICc,model_2A$AICc,model_2B$AICc)
+bic = c(model_1A$BIC,model_1B$BIC,model_2A$BIC,model_2B$BIC)
+s <- data.frame(Index = index, "Model" = model, "CV error"=cves,"AIC"=aic,"AICc"=aicc,"BIC"=bic)
+knitr::kable(s, caption = "Criterion values of each model")
+```
+
+Interestingly, the models using exponential smoothing to remove the signal have higher cross-validation errors but smaller AIC, AICc, and BIC than the models using second-order differencing to remove the signal. It implies that our exponential smoothing model is more overfitting than the second-order differencing model. Because the average difference between cross-validation errors of second-order differencing models and those of exponential smoothing models is much larger than the the average difference between AIC, AICc, and BIC of two models, we will select one model from two second-order differencing models. Now, since the criterions of these two models are very close to each other, we will simply choose model 3 somewhat arbitrarily.
+
 
 # Final Model
 
