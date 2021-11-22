@@ -31,8 +31,8 @@ t = 1:300
 data <- read.csv("data/TSLA.csv")
 open <- data$Open
 close <- data$Adj.Close
-data = tail(close, 300)
-plot.ts(data, main="TSLA stock closure price data", ylab="Daily closure price")
+close_data = tail(close, 300)
+plot.ts(close_data, main="TSLA stock closure price data", ylab="Daily closure price")
 ```
 
 ### Models considered: Second Order Differencing + ARMA
@@ -40,7 +40,7 @@ plot.ts(data, main="TSLA stock closure price data", ylab="Daily closure price")
 Second order differencing, observe the data, the data seems stationary without obvioud trend or seasonality. 
 
 ```{r}
-diff = diff(data, lag=1)
+diff = diff(close_data, lag=1)
 second_diff = diff(diff, lag = 1)
 plot.ts(second_diff, main="second order differencing on TSLA data")
 acf2(second_diff, main="Series: TSLA closure price data")
@@ -55,11 +55,18 @@ auto.arima(second_diff)
 The model looks well on Ljung-Box statistic with all p values above 0.05. Also the ACF of residuals shows no ACF go beyond two blue band.
 
 ```{r}
-model1 <- sarima(data, p=1, d=2, q=1, P=0, D=0, Q=0, S=0)
+model1 <- sarima(close_data, p=1, d=2, q=1, P=0, D=0, Q=0, S=0)
+```
+```{r}
+model1$ttable
+model1.acf=ARMAacf(ar=c(-0.1087), ma=c(-0.9488), lag.max = 20, pacf=FALSE)
+acf(as.vector(second_diff), lag.max=20)
+points(0:20, model1.acf, col='red')
 cat("AIC", model1$AIC)
 cat("BIC", model1$BIC)
 cat("AICc", model1$AICc)
 ```
+
 
 ```{r}
 # cross validation
@@ -72,9 +79,9 @@ forward_time = 10
 n = (end_day - start_day) / jump
 
 for (k in start_day:end_day) {
-  train <- window(data, end=k-0.001)
-  test <- window(data, start=k, end=k + forward_time - 0.01)
-  forecast <- sarima.for(train, n.ahead = forward_time, p=0, d=1, q=0, P=0, D=1, Q=1, S=5)
+  train <- window(close_data, end=k-0.001)
+  test <- window(close_data, start=k, end=k + forward_time - 0.01)
+  forecast <- sarima.for(train, n.ahead = forward_time, p=1, d=2, q=1, P=0, D=0, Q=0, S=0)
   error = error + sum((forecast$pred - test)^2)
   k = k + 10
 }
@@ -82,7 +89,27 @@ error = error / n
 cat("cross validation error", error)
 ```
 
-### Model considered: Exponential Smoothing
+### 5. Results 
+We choose model 3: 2nd-order differencing + ARMA 2A model. 
+First, write out model mathematically. Let original time series stock data denoted by $
+$\{X_t\}$ and second order differenced time series data denoted by $\{Z_t\}$. Then $(1 - \phi_1B) \nabla^2 X_t = (1 - \theta_1B)W_t$ or equivalently $(1-\phi_1B)Z_t = (1-\theta_1B)W_t$.
+Second, estimate the parameters of your chosen model, probably in a table. 
+```{r}
+model1$ttable
+```
+
+Third, forecast appropriately and include a plot of your forecasted values appended to the end of your time series. Here I choose to forecast TSLA closure price for next 10 days. TODO: address uncertainty about prediction?
+```{r}
+plot(close_data)
+forecast <- sarima.for(close_data, n.ahead = 10, p=1, d=2, q=1, P=0, D=0, Q=0, S=0)
+forecast$pred
+```
+
+
+#### 5.1 Estimation of model parameters
+
+
+<!-- ### Model considered: Exponential Smoothing -->
 <!-- In this model, we choose exponential smoothing with weight $\alpha = 0.8$. We calculate $\hat{y}_{t+1} = \alpha y_t + \alpha(1-\alpha) y_{t-1} + ... + \alpha (1-\alpha)^{t-1}y_1$, where $0<\alpha<1$. -->
 
 <!-- First, we explore and choose a good alpha value. -->
