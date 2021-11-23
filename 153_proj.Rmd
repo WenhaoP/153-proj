@@ -1,6 +1,6 @@
 ---
 title: "Time series analysis on the stock price of Tesla Inc."
-author: "Wenhao Pan (3034946058), Ruojia Zhang, Mengzhu Sun, Xiangxi Wang, Mingmao Sun"
+author: "Wenhao Pan (3034946058), Ruojia Zhang (3034069393), Mengzhu Sun (3034163682), Xiangxi Wang (3036138312), Mingmao Sun"
 date: "November 13, 2021"
 output:
   pdf_document: 
@@ -391,7 +391,7 @@ cv_2A = cv_2A / 10
 cv_2B = cv_2B / 10
 ```
 
-we summarize the criterion of all the models into the following table:
+we summarize the criterion values of all the models into Table 1:
 
 ```{r}
 index = c(1, 2, 3, 4)
@@ -404,14 +404,80 @@ s <- data.frame(Index = index, "Model" = model, "CV error"=cves,"AIC"=aic,"AICc"
 knitr::kable(s, caption = "Criterion values of each model")
 ```
 
-Interestingly, the models using exponential smoothing to remove the signal have higher cross-validation errors but smaller AIC, AICc, and BIC than the models using second-order differencing to remove the signal. It could be that our exponential smoothing model is more overfitting than the second-order differencing model. Because the average difference between cross-validation errors of second-order differencing models and those of exponential smoothing models is much larger than the the average difference between AIC, AICc, and BIC of two models, we will select one model from two second-order differencing models. Now, since the criterions of these two models are very close to each other, we will simply choose model 3 somewhat arbitrarily.
+Interestingly, the models using exponential smoothing to remove the signal have higher cross-validation errors but smaller AIC, AICc, and BIC than the models using second-order differencing to remove the signal. It could be that our exponential smoothing model is more overfitting than the second-order differencing model. Because the average difference between cross-validation errors of second-order differencing models and those of exponential smoothing models is much larger than the the average difference between AIC, AICc, and BIC of two models, we will select one model from two second-order differencing models. Now, since the criterions of these two models are very close to each other, we will simply choose model 3 because it has less parameters than model 4. The choise here is somewhat arbitrary.
 
 There is a caveat that the we extract AIC, BIC, and AICc of these four models directly from their `sarima()` fitted results. However, the exponential smoothing cannot be directly involved in `sarima()` while the second-order differencing can be. This discrepancy might bias the measured criterions. For the simplicity of this project, we ignore this discrepancy, although we recommend further exploration in it.
 
 # Final Model
 
-## Model interpretation
+From the model selection process, we choose second-order differencing with ARMA 2A as our final model. We will give the specific formula of our model and its prediction for future ten time points.
+
+## Model Expression
+
+To write out the formula, we denote the original time series, close price, by $\{X_t\}$ and the second-order differenced time series by $\{Z_t\}$. Then, our model has the form
+$$(1 - \phi_1B)(\nabla^2 X_t - \mu_t) = (1 + \theta_1B)W_t$$
+where $W_t\sim WN(0,\sigma^2)$ and $\mu_t$ is a constant. The estimations of the parameters are in the Table 2.  
+
+Parameters    Estimate       SE
+--------   --------------   ----------------
+$\phi_1$        -0.1085          0.0632
+$\theta_1$      -0.9520          0.0269
+$\mu_t$         0.0576           0.0677	
+---------  --------------   ----------------
+
+Table: The estimates of the model parameters
+
+```{r, include = FALSE}
+model_2A$ttable
+```
 
 ## Prediction
+
+The time series plot in Figure TODO shows the predicted value (red points) of TSLA stock price for the next ten trading days from November 3 and November 16, 2021. Our model predicts an monotonically increasing trend probably because $X_t$ is monotonically increasing during the last few days as well. The gray areas are $68\%$ and $95\%$ prediction intervals respectively. 
+
+To further specify the uncertainty and error of the prediction, we collect the actual close price of Tesla on these ten days and plot them with the predictions and their prediction intervals.
+
+```{r, fig.height= 3, fig.cap="(a): The historical and predicted closed price (b): Predicted and actual close price"}
+par(mfrow = c(1, 2), cex = 0.7)
+close = stock_300$Close
+model_forecast <- sarima.for(close, n.ahead = 10, p = 1, d = 2, q = 1, 
+                        P = 0, D = 0, Q = 0, S = 0)
+title(main = "(a)")
+
+# compute the prediction intervals
+model_pred <- model_forecast$pred
+model_se <- model_forecast$se
+lower <- c()
+upper <- c()
+for (i in 1:10){
+  lower[i] <- model_pred[i] - 1.96 * model_se[i]
+  upper[i] <- model_pred[i] + 1.96 * model_se[i]
+}
+
+# collect actual data
+stock_new = read.csv("data/TSLA_new.csv")
+stock_new_true <- tail(stock_new, 10)
+stock_new_true = stock_new_true[c('Date','Close')]
+df <- data.frame(stock_new_true$Date, model_pred, stock_new_true$Close, lower, upper)
+colnames(df)=c("Time", "Prediction", "True", "Lower", "Upper")
+
+# plot the prediction, actual value, and prediction interval
+plot(1:10, xlab = "Time", ylab = "Stock Price ($)", ylim=c(1000,1550), main = "(b)",
+     sub = "(Nov 3, 2021 - Nov 16, 2021)",
+  # Titles in italic and bold
+  font.main=4, font.lab=4, font.sub=4,
+  # Change font size
+  cex.main=1.2, cex.lab=1, cex.sub=0.75)
+polygon(c(rev(1:10), 1:10), c(rev(df[ ,4]), df[ ,5]), col = 'grey85', border = NA)
+lines(1:10, df[ ,4], lty = 'dashed', col = 'gray')
+lines(1:10, df[ ,5], lty = 'dashed', col = 'gray')
+lines(1:10, df[ ,2], type = "l", pch = 19, col = "red")
+points(1:10, stock_new_true$Close, pch = "*", col = "blue")
+lines(1:10, stock_new_true$Close, pch = 18, col = "blue", type = "b", lty = 2)
+legend("topleft", legend=c("Prediction", "Actual"),
+       col=c("red", "blue"), lty = 1:2, cex=0.8)
+```
+
+The figure above displays the comparison between the forecasted and actual values of Tesla stock price in the analyzed period. The $95\%$ prediction interval captures first four days well. However, because the actual close price sharply decreased from day three to day five and did not increase to the original level, our predictions diviates from the true values significantly. We find out that Elon Mask announced his interest to sell ten percent of his holdings at the weekend of Nov. 6th. It might be the reason for the decrease.
 
 # Conclusion
