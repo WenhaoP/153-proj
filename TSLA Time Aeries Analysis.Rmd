@@ -411,7 +411,7 @@ for (i in 1:10){
 
 
 ```{r}
-stock_new = read.csv("/Users/charlottewang/Desktop/TSLA.csv")
+stock_new = read.csv("/Users/charlottewang/Desktop/TSLA_new.csv")
 stock_new_true <- tail(stock_new, 10)
 stock_new_true = stock_new_true[c('Date','Close')]
 df <- data.frame(stock_new_true$Date, model_pred, stock_new_true$Close, lower, upper)
@@ -431,7 +431,6 @@ plot(1:10, xlab = "Time", ylab = "Stock Price ($)", ylim=c(1000,1550),
 polygon(c(rev(1:10), 1:10), c(rev(df[ ,4]), df[ ,5]), col = 'grey85', border = NA)
 lines(1:10, df[ ,4], lty = 'dashed', col = 'gray')
 lines(1:10, df[ ,5], lty = 'dashed', col = 'gray')
-#points(1:10, df[ ,2], type = "n", pch = 19, col = "red")
 lines(1:10, df[ ,2], type = "l", pch = 19, col = "red")
 points(1:10, stock_new_true$Close, pch = "*", col = "blue")
 lines(1:10, stock_new_true$Close, pch = 18, col = "blue", type = "b", lty = 2)
@@ -439,7 +438,7 @@ legend("topleft", legend=c("Prediction", "Actual"),
        col=c("red", "blue"), lty = 1:2, cex=0.8)
 ```
 Figure .
-The figure above displays the comparison between the forecasted and actual values of Tesla stock price in the analyzed period. With the 95% prediction interval, it is shown that our model fits six out of ten days appropriately; however, since Elon Musk sold 10% of his Tesla holding on November 7, its share price sharply decreased, which lead to a significant deviation from the predicted value.
+The figure above displays the comparison between the forecasted and actual values of Tesla stock price in the analyzed period. With the 95% prediction interval, it is shown that our model fits four out of ten days appropriately; however, since Elon Musk sold 10% of his Tesla holding on November 7, its share price sharply decreased, which lead to a significant deviation from the predicted value.
 
 # Final Model
 
