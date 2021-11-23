@@ -1,0 +1,459 @@
+---
+title: "Time series analysis on the stock price of Tesla Inc."
+author: "Wenhao Pan (3034946058), Ruojia Zhang (3034069393), Mengzhu Sun (3034163682), Xiangxi Wang (3036138312), Mingmao Sun"
+date: "November 13, 2021"
+output:
+  pdf_document: 
+    toc: true
+    number_sections: true
+urlcolor: blue
+---
+\newpage
+```{r include = FALSE}
+# Template source: https://github.com/alexpghayes/rmarkdown_homework_template
+knitr::opts_chunk$set(
+  echo = FALSE, # don't show code
+  warning = FALSE, # don't show warnings
+  message = FALSE, # don't show messages (less serious warnings)
+  cache = FALSE, # set to TRUE to save results from last compilation
+  fig.align = "center", # center figures
+  fig.height = 4
+)
+library(ggplot2)
+library(patchwork)
+library(astsa)
+library(TSA)
+library(forecast)
+set.seed(153) # make random results reproducible
+```
+
+# Abstract
+
+# Introduction
+
+Due to the increasing focus on carbon neutrality, the industry of replacing non-sustainable energy with sustainable energy has boomed in the past few years. Electricity, as a relatively environment-friendly energy, has been considered as replacement of some traditional energy, such as gasoline and diesel.  Among all those enterprises pursing commercialized carbon neutrality, TSLA, as the largest electric car company, has been pioneering the fashion and aiming to transition the world to electric mobility. As the reflection of belief of the public, the stock price of TSLA has been sedentary for a period of time and has no evident increase until recent years. Therefore, we pick up the close price of TSLA stock of the recent 300 days to explore. In the following experiments, we utilize differencing, exponential smoothing, and fitting ARMA model, and combination of them to approximate the series. 
+
+# Data Description
+
+The TSLA stock price comes from Yahoo Finance (https://finance.yahoo.com). The stock price dataset consists of open price, close price, high price, and low price of a trading day. Since they has roughly similar trend, we choose close price to experiment on. The whole volume of data, which contains 2791 data points, has variance 39768.49, max price 1208.59, min price 4.01, mean price 112.4271. The recent-300-day data has variance 22697.1, max price 1208.59, min price 330.21, mean price 654.1912.
+
+```{r}
+# load data
+stock = read.csv("data/TSLA.csv")
+stock$Date = as.Date(stock$Date)
+# Extract last 300 days
+n = 300
+t = 1:n
+stock_300 = tail(stock, n)
+stock_300 = stock_300[c('Date','Close')]
+stock_300$t = t
+```
+
+# Exploratory Data Analysis
+
+To obtain a comprehensive understanding of the data, we conduct explanatory data analysis (EDA) first. Figure 1(a) is the time series plot of all the given time points. We observe that the stock prices of Tesla before 2020 are averagely and considerably lower than those after 2020. The significantly different scales of different parts of the time series make it hard to visually examine the trend and seasonality pattern of the time series. Moreover, since we are majorly interested in the recent activities of Tesla, we do not have to analyze all the available data. Therefore, for the sake of interest and convenience, we decide only to analyze the last 300 time points, which cover the period from `2020-08-26` to `2021-11-02` excluding weekends. Thus, whenever we use the word "data" in the following analysis, we implicitly mean the time series of the last three hundred time points. 
+
+```{r, fig.cap="(a) Time series plot of all available trading days. (b) Time series plot of last 300 trading days", fig.height=6, out.width="80%", fig.height=4.5}
+# Line plot of all the data
+full_data <- ggplot(data = stock, aes(x = Date, y = Close)) +
+  geom_line() +
+  ylab("Close Price (Dollars)") +
+  ggtitle("(a)")
+# Line plot of last 300 data
+last_300 <- ggplot(data = stock_300, aes(x = Date, y = Close)) +
+  geom_line() +
+  ylab("Close Price (Dollars)") +
+  ggtitle("(b)")
+full_data / last_300
+```
+
+Figure 1(b) is the time series plot of the close prices of Tesla in the last three hundred trading days before and including `2021-11-02`. We first observe that our data is roughly homoscedastic based on Figure 1(b). To verify our observation, we try the square root and natural log transformations and see whether they effectively stabilize the variance of the time series. Their plots are below in Figure 2.
+
+```{r, fig.cap="(a): Original time series. (b): Square root transfromed time seires. (c): Natural log transformed time series.", fig.height=3}
+# Line plot of last 300 data
+last_300 <- ggplot(data = stock_300, aes(x = Date, y = Close)) +
+  geom_line() +
+  ylab("Close Price (Dollars)") +
+  ggtitle("(a)") + 
+  theme(text = element_text(size = 8)) + 
+  guides(x =  guide_axis(angle = 90))
+# Line plot of last 300 data with square root transformation
+last_300_sqrt <- ggplot(data = stock_300, aes(x = Date, y = Close)) +
+  geom_line() +
+  scale_y_sqrt() +
+  ylab("Close Price (Dollars)") +
+  ggtitle("(b)") + 
+  theme(text = element_text(size = 8)) +
+  guides(x =  guide_axis(angle = 90))
+# Line plot of last 300 data with natural log transformation
+last_300_log <- ggplot(data = stock_300, aes(x = Date, y = Close)) +
+  geom_line() +
+  scale_y_log10() +
+  ylab("Close Price (Dollars)") +
+  ggtitle("(c)") + 
+  theme(text = element_text(size = 8)) +
+  guides(x =  guide_axis(angle = 90))
+last_300 + last_300_sqrt + last_300_log
+```
+We can see that both transformations unnecessarily increase the variance of the time series before mid-November in 2020 and do not change the variance of other time series data. Although both transformations shorten the vertical distance between the maximum and minimum of the time series after Oct. 2021, the spike after Oct. 2021 is more like an increasing trend than a considerable fluctuation. In short, both transformations are redundant, and we do not need to use any variance stabilizing transformation. 
+
+Back to Figure 1(b), intuitively, the data is not stationary because of a nonlinear and generally increasing trend. The trend first increases until around Feb. 2021 and then decreases until around Mid-May. 2021. Finally, the trend increases again until the end of the time series. Nonetheless, we do not observe an obvious or significant seasonality pattern. It matches the intuition since the granularity of our data is day, and the structure of stock price data is too complicated to have a seasonality pattern.
+
+In conclusion, based on all the previous discussions in EDA, we decide to construct possible models on the original time series data, including only the last three hundred time points. 
+
+# Model Construction
+
+With a comprehensive understanding of our data, we start to experiment and construct different time series model. We choose and build two non-parametric signal models of the trend and seasonality in our data. We aim to make the residuals approximately weekly stationary. We do not consider any parametric trend model because we think the trend of the stock price data is too complicated to be modeled by a parametric model, such as a high-order polynomial. Certainly, we could use a 15 or 20 order polynomial, but it may overfit the training data and produce imprecise predictions. We do not consider a parametric seasonality model either because we do not find a clear seasonality pattern in our data by the EDA. Finally, based on each signal model, we provide two ARMA models or its extension, such as SARMA or ARIMA, to whiten the residuals of the signal model. Thus, we have four candidate models, and we will explain how we select a final model among them in the next section.
+
+## Non-parametric Signal Model: exponential smoothing
+
+In this signal model, we choose exponential smoothing with weight $\alpha = 0.9$ and lag $k = 10$ and a seasonal differencing with period $d = 5$. 
+
+```{r, fig.cap="(a): Time series plot of the original data and fitted values. (b): The residual plot of exponential smoothing.", fig.height=3}
+par(mfrow = c(1, 2), cex = 0.65, lwd = 0.8)
+# exponential filter 
+alpha = 0.9
+lag = 10
+filter_weights = alpha^(1:lag)
+filter_weights = filter_weights/sum(filter_weights)
+filtered_stock = filter(stock_300$Close, filter_weights, sides = 1)
+# Plot the original data and fitted values
+plot(stock_300$t, stock_300$Close, type = 'l', main = "(a)", xlab = "Time", ylab = "Close Price")
+lines(stock_300$t, filtered_stock, col = 'red')
+filtered_stock = na.omit(filtered_stock)
+log_stock = stock_300$Close[-1:-(lag - 1)]
+res = log_stock - filtered_stock
+plot(res, main = "(b)", xlab = "Time", ylab = "Residuals")
+```
+
+We experiment with different combinations of $\alpha$ and $k$ with a careful consideration of overfitting issue. we choose $k=10$ as the final value because we want to only use past two weeks, which are ten days in our data, to forecast. We choose $\alpha = 0.9$ as the final value because we think it best balances the smoothing effect and the capture of trend pattern among $(0,1)$. Indeed, the smoothing line in Figure 4(a) fits the data in the way that we want. Note that we lose the first nine time points due to the computation process of the exponential smoothing.
+
+However, the residual plot Figure 4(b) is fairly non-stationary, as it has cycling fluctuation pattern and still slightly nonlinear trend. It might be due to that we intentionally let exponential smoothing not fit the data perfectly. Next, We use the seasonal differencing with period $d = 5$, which is one week in our data, to further make the residuals more stationary.
+
+```{r, results='hide', fig.cap="(a): Time series plot of the seasonal differenced (d = 5) residuals from the previous smoothing.", out.width="80%", fig.height=3}
+# seasonal differencing
+diff_res = diff(res, lag = 5)
+par(cex = 0.65)
+plot(diff_res, main = "(a)", ylab = "Differenced Data")
+```
+
+Indeed, now the differenced residuals become more stationary. There seems to be a contradiction that recalling in EDA, we claim that there is not a clear seasonality in our data. However, the effect of the seasonal differencing here implies a possible seasonality with period $d=5$. We think it might be due to that the seasonal differencing is actually removing the remaining trend left by the exponential smoothing instead of the seasonality. Nevertheless, We believe that the time series of the differenced residuals shown in Figure 5(a) is stationary enough for us to build ARMA models on it. For the convenience, we use "residuals" to represent "the seasonal differenced residuals" in the following two subsections. 
+
+### ARMA 1A: $ARIMA(1,0,3)\times(0,0,1)[5]$
+
+After acquiring a approximately stationary residuals from the signal model, we use ARMA model to further model the residuals so that we can predict future residuals reasonably. Then, summing the predicted residuals and signals gives us the prediction of the original time series, stock price. To obtain the intuition for choosing ARMA model, we use the sample ACF and PACF plots of the residuals shown in Figure TODO.
+
+```{r, fig.cap="The sample ACF and PACF plots of the residuals from expo. smoothing", fig.height = 3, out.width="75%", results='hide'}
+# sample ACF and PACF plots
+acf2(diff_res)
+```
+In the ACF plot, if we ignore lag $5$ temporarily, we observe a sharp cutoff after lag $3$, so $q = 3$ might be a reasonable choice. Similarly, if we ignore the lags around the multiples of $5$ temporarily, the PACF plot has a cutoff after lag $1$, so $p = 1$ might be a reasonable choice. To handle the spikes at lag $5$ in ACF and lag multiples of $5$ in PACF, choosing seasonal $MA(1)$ with period $d = 5$ might be reasonable. To increase the credibility of our choices, we apply `auto.arima` on the residuals and receive an $ARIMA(2,0,3)\times(0,0,0)[5]$ model, which is similar to our candidate model ARIMA(1,0,3)$\times$(0,0,1)[5], although all the Ljung-Box statistics of $ARIMA(2,0,3)\times(0,0,0)[5]$ have p-values smaller than $0.05$. 
+
+```{r, results='hide', fig.height=3, out.width = "80%", fig.cap="Model diagnostics plots of ARIMA(1,0,3)x(0,0,1)[5]"}
+model_1A <- sarima(diff_res, p = 1, d = 0, q = 3, P = 0, D = 0, Q = 1, S = 5)
+```
+
+```{r, include=FALSE}
+# model selected by auto.arima
+auto.arima(diff_res)
+sarima(diff_res, p = 2, d = 0, q = 3, P = 0, D = 0, Q = 0, S = 0)
+```
+
+To assess our model, we visualize different model diagnostics methods in Figure TODO. The standardized residuals seem to have a i.i.d. standard normal distribution with a slightly more large values in magnitude. In the ACF plot of residuals, almost all the spikes lie within 95% confidence interval. The normal q-q plot implies a slightly fatter tail distribution than the normal distribution, but we can still claim the validity of the normality assumption. The p-values of all the Ljung-Box statistics are above $0.05$, so we fail to reject the null hypothesis that the data was generated from our candidate ARMA model. In summary, all the model diagnostics methods imply that our candidate ARMA model is considerably reasonable. We call this model "ARMA 1A".
+
+### ARMA 1B: $ARIMA(1,0,1)\times(0,0,1)[5]$
+
+We provide a second way to model the seasonal differenced residuals.
+
+From the ACF and PACF plots of the residuals in Figure TODO, we can observe a negative spike at lag = 5 for both plots. If we do not ignore the spikes at some lags like we did in ARMA 1A, neither the ACF or the PACF plot has a reasonable cutoff. Thus, we need to choose both $p > 0$ and $q > 0$.
+
+Recall that `auto.arima()` returns a $ARIMA(2,0,3)\times(0,0,0)[5]$ model but with bad diagnostics evaluation. Nonetheless, we can still treat it as a reference model and develop a better model based on it. Combining with the previous observations in the ACF and PACF plots, we experiment with different orders and look for the one with lowest AIC, AICc, and BIC values. See the code appendix for more details. We end up with $ARIMA(1,0,1)\times(0,0,1)[5]$ model.
+
+```{r, include = FALSE}
+attempt1 <- sarima(diff_res, p = 2, d = 0, q = 2, P = 0, D = 0, Q = 0, S = 5)
+# does not pass the Ljung-box test
+attempt2 <- sarima(diff_res, p = 2, d = 0, q = 2, P = 1, D = 0, Q = 0, S = 5)
+# does not pass the Ljung-box test
+attempt3 <- sarima(diff_res, p = 2, d = 0, q = 2, P = 0, D = 0, Q = 1, S = 5)
+print(attempt3$AIC)
+print(attempt3$AICc)
+print(attempt3$BIC)
+attempt4 <- sarima(diff_res, p = 1, d = 0, q = 2, P = 0, D = 0, Q = 1, S = 5)
+print(attempt4$AIC)
+print(attempt4$AICc)
+print(attempt4$BIC)
+attempt5 <- sarima(diff_res, p = 1, d = 0, q = 1, P = 0, D = 0, Q = 1, S = 5)
+print(attempt5$AIC)
+print(attempt5$AICc)
+print(attempt5$BIC)
+attempt6 <- sarima(diff_res, p = 0, d = 0, q = 0, P = 0, D = 0, Q = 1, S = 5)
+print(attempt6$AIC)
+print(attempt6$AICc)
+print(attempt6$BIC)
+# From these previous attempts we can see that attempt 5 generates the lowest AIC, AICc, and BIC values,
+# and passes the Ljung-Box test.
+```
+
+```{r, results='hide', fig.height=3, out.width = "80%",fig.cap="Model diagnostics plots of ARIMA(1,0,1)x(0,0,2)[5]"}
+model_1B <- sarima(diff_res, p = 1, d = 0, q = 1, P = 0, D = 0, Q = 1, S = 5)
+```
+
+The diagnostics plots in Figure TODO have a highly similar performance to those of ARMA 1A. Thus, we consider this model as a reasonable one and call it "ARMA 1B". 
+
+## Non-parametric Signal Model: second-order differencing 
+
+In this model, we choose the second-order differencing to remove the trend. We observe that after the first-order differencing, there is still some trend pattern, such as the increasing one between $270$ and $300$, as shown by Figure TODO. This matches our previous analysis that the trend of our data is nonlinear in EDA. Thus, we take another differencing and acquire the second-order differencing data shown in Figure TODO.
+
+```{r, fig.cap="(a): The first-order differenced data. (b): The second-order differenced data.", fig.height=2}
+par(mfrow = c(1, 2), cex = 0.65, lwd = 0.5)
+# first order differencing
+stock_d = diff(stock_300$Close)
+# second order differencing
+stock_dd = diff(stock_d)
+plot(stock_d, type = 'l', main = "(a)", ylab = "Differenced Data")
+plot(stock_dd, type = 'l', main = "(b)", ylab = "Differenced Data")
+```
+
+The second-order differenced time series, denoted by $Z_t$, is more stationary than the first-order differenced time series. We can keep trying more higher-order differencings, but they may overfit our data. Therefore, we stop at the second-order differenced time series $Z_t$ which is already stationary enough for us to build ARMA model on it.
+
+### ARMA 2A: $ARIMA(1,0,1)\times(0,0,0)[0]$
+
+Based on $Z_t$, we continue our modeling by finding and fitting a suitable ARMA model on it. We first plot the sample ACF and PACF of $Z_t$ as we did for the seasonal differenced residuals to obtain some intuition.
+
+```{r, fig.cap="The sample ACF and PACF plots of $Z_t$", fig.height = 3, out.width="75%", results='hide'}
+# sample ACF and PACF plots
+acf2(stock_dd)
+```
+
+From the ACF plot of $Z_t$, we observe a sharp a cutoff after lag $1$, so MA(1) seems to be a reasonable choice. Also,  we observe an exponential decay in the PACF plot, indicating that we should use an $ARMA(p, 1)$ model for some $q$. We use the `auto.arima()` to help us find the suitable $p$, and we acquire an $ARIMA(1,0,1)\times(0,0,0)[0]$ model on $Z_t$. Since we have done a second-order differencing with lag $1$ on the original time series, essentially we use an $ARIMA(1, 2, 1)\times(0,0,0)[0]$ on the original time series. As usual, we plot the model diagnostics plots in Figure TODO to assess our model.
+
+```{r, include = FALSE}
+auto.arima(stock_dd, start.q = 1)
+```
+
+```{r, results='hide', fig.height=3, out.width = "80%",fig.cap="Model diagnostics plots of ARIMA(1,0,1)x(0,0,0)[0]"}
+model_2A <- sarima(stock_dd, p=1, d=0, q=1, P=0, D=0, Q=0, S=0)
+```
+The performance of the diagnostics plots is similar to those of ARMA 1A and 1B models, which means our model choice here is reasonable. 
+
+### ARMA 2B: 
+
+We provide a second way to model the second-ordered differenced time series $Z_t$.
+
+In the PACF plot of $Z_t$ in Figure TODO, the magnitude of PACF is decreasing significantly from lag $1$ to lag $5$. From the ACF plot of $Z_t$, we observe an evident cutoff of magnitude of ACF occurs at lag $1$. Therefore, it is reasonable to fit $Z_t$ with a MA model. However, clearly the ACF and PACF plot do not strictly match the theoretical ones of $MA(q)$ where $q \in \{4,5,6\}$ model, so we experiment with multiple combinations of $q \in \{4,5,6\}$ and of $p \in \{0,1\}$. We choose $p \in \{0,1\}$ because the model returned by `auto.arima()` has $p = 1$. 
+
+```{r, include=FALSE}
+v = stock_dd
+accuracy_1 = c()
+accuracy_2 = c()
+accuracy_3 = c()
+accuracy_4 = c()
+accuracy_5 = c()
+accuracy_6 = c()
+# compute cross-validation errors of each model
+for(k in 0:12){
+  Nt <- 10
+  N <- length(v) - 10 - Nt * k
+  x = c(1:N)
+  new = data.frame(x = c((N + 1):(N + Nt)))
+  train <- v[1:N]
+  test <- v[(N+1):(N + Nt)]
+  mod1_pred <- sarima.for(train, n.ahead = Nt, p = 0, d = 0, q = 4, plot = FALSE)
+  mod2_pred <- sarima.for(train, n.ahead = Nt, p = 0, d = 0, q = 5, plot = FALSE)
+  mod3_pred <- sarima.for(train, n.ahead = Nt, p = 0, d = 0, q = 6, plot = FALSE)
+  mod4_pred <- sarima.for(train, n.ahead = Nt, p = 1, d = 0, q = 4, plot = FALSE)
+  mod5_pred <- sarima.for(train, n.ahead = Nt, p = 1, d = 0, q = 5, plot = FALSE)
+  mod6_pred <- sarima.for(train, n.ahead = Nt, p = 1, d = 0, q = 6, plot = FALSE)
+  accuracy_1 = append(accuracy_1, (mean((test - as.vector(mod1_pred$pred))^2))^0.5)
+  accuracy_2 = append(accuracy_2, (mean((test - as.vector(mod2_pred$pred))^2))^0.5)
+  accuracy_3 = append(accuracy_3, (mean((test - as.vector(mod3_pred$pred))^2))^0.5)
+  accuracy_4 = append(accuracy_4, (mean((test - as.vector(mod4_pred$pred))^2))^0.5)
+  accuracy_5 = append(accuracy_5, (mean((test - as.vector(mod5_pred$pred))^2))^0.5)
+  accuracy_6 = append(accuracy_6, (mean((test - as.vector(mod6_pred$pred))^2))^0.5)
+}
+cv1 = mean(accuracy_1)
+cv2 = mean(accuracy_2)
+cv3 = mean(accuracy_3)
+cv4 = mean(accuracy_4)
+cv5 = mean(accuracy_5)
+cv6 = mean(accuracy_6)
+# fit each model
+model_1 = sarima(v, p = 0, d = 0, q = 4)
+model_2 = sarima(v, p = 0, d = 0, q = 5)
+model_3 = sarima(v, p = 0, d = 0, q = 6)
+model_4 = sarima(v, p = 1, d = 0, q = 4)
+model_5 = sarima(v, p = 1, d = 0, q = 5)
+model_6 = sarima(v, p = 1, d = 0, q = 6)
+# extract the criterions of each model
+model = c("MA(4)", "MA(5)","MA(6)","ARMA(1,4)","ARMA(1,5)","ARMA(1,6)")
+cves = c(cv1,cv2,cv3,cv4,cv5,cv6)
+aic = c(model_1$AIC,model_2$AIC,model_3$AIC,model_4$AIC,model_5$AIC,model_6$AIC)
+aicc = c(model_1$AICc,model_2$AICc,model_3$AICc,model_4$AICc,model_5$AICc,model_6$AICc)
+bic = c(model_1$BIC,model_2$BIC,model_3$BIC,model_4$BIC,model_5$BIC,model_6$BIC)
+s <- data.frame("Model" = model, "Crossvalidation error"=cves,"AIC"=aic,"AICc"=aicc,"BIC"=bic)
+s
+```
+
+With consideration of cross-validation error, model AIC, model AICc, model BIC, the MA(4) model has the best performance. See the code appendix for more details about selection. We plot the model diagnostics methods in Figure TODO to further assess MA(4) model. 
+
+```{r, results='hide', fig.height=3, out.width = "80%",fig.cap="Model diagnostics plots of ARIMA(0,0,4)x(0,0,0)[0]"}
+model_2B <- sarima(stock_dd, p=0, d=0, q=4, P=0, D=0, Q=0, S=0)
+```
+
+The performance of the diagnostics plots is similar to those of the previous three models, which means our model choice here is reasonable. 
+
+# Model Comparision and Selection
+
+Now, with four carefully chosen models, we need to select a final model that best fits the data. However, it is dangerous to blindly choose an overcomplicated model that can perfectly match the given data because the model may also fit the noise in the data as well. We only want our model capture the true underlying pattern of the data so that it can be generalized to unseen data well. Otherwise, our prediction might be too noisy and far away from the actual value. This issue is known as overfitting. 
+
+To lessen the overfitting issue as much as possible, we compute and compare the AIC, AICc, BIC, and cross-validation error of each model. The first three criterion measures the fitness of a model on the in-sample data while penalizing the complexity of the model. The last one measures the predictability of a model on the out-of-sample data. Then, we will select the model that has the best performance with a comprehensive consideration of all four criterions. See the code appendix for more details about the selection process.
+
+```{r}
+# Here we compute the cross-validation error of each model. We only use the last one hundred
+# data points, which is 1/3 of the entire data, to select the validation set. There are
+# ten validation sets, and each of them contains ten data points. The whole process is 
+# very similar to the classical k-fold cross-validation. In the first iteration, the training
+# set contains the time points 1:200, and the validation set contains the time points 201:210.
+# Then, in the second iteration, the training set contains the time points 1:210, and
+# the validation set contains the time points 211:220. We repeat the similar process, and in 
+# the last iteration, the training set contains the time points 1:290, and the validation set
+# contains the time points 291:300.
+start <- 200
+cv_1A <- 0
+cv_1B <- 0
+cv_2A <- 0
+cv_2B <- 0
+for (i in 0:9) {
+  # train-val set split
+  train <- window(stock_300$Close, end = start + i * 10)
+  val <- window(stock_300$Close, start = start + i * 10 + 1, end = start + (i + 1) * 10)
+  
+  # get stationary residuals
+  filtered_train = filter(train, filter_weights, sides = 1)
+  filtered_train = na.omit(filtered_train)
+  cut_train <- train[-1:-(lag - 1)]
+  exp_res = cut_train - filtered_train
+  
+  # exponential smoothing prediction
+  exp_pred = numeric(10)
+  values = tail(train, 10) # store the values for prediction
+  for (i in 1:10){
+    exp_pred[i] = sum(tail(values, 10) * rev(filter_weights)) 
+    values <- append(values, exp_pred[i])
+  }
+  
+  # ARMA prediction
+  arma_1A_pred <- sarima.for(exp_res, n.ahead = 10,  p = 1, d = 0, q = 3, 
+                             P = 0, D = 0, Q = 1, S = 5, plot = FALSE)$pred
+  arma_1B_pred <- sarima.for(exp_res, n.ahead = 10,  p = 1, d = 0, q = 1, 
+                             P = 0, D = 0, Q = 1, S = 5, plot = FALSE)$pred
+  
+  # total prediction
+  pred_1A <- exp_pred + arma_1A_pred
+  pred_1B <- exp_pred + arma_1B_pred
+  pred_2A <- sarima.for(train, n.ahead = 10,  p = 1, d = 2, q = 1, 
+                        P = 0, D = 0, Q = 0, S = 0, plot = FALSE)$pred
+  pred_2B <- sarima.for(train, n.ahead = 10,  p = 0, d = 2, q = 4, 
+                        P = 0, D = 0, Q = 0, S = 0, plot = FALSE)$pred
+  
+  # compute errors
+  cv_1A <- cv_1A + mean((pred_1A - val)^2)
+  cv_1B <- cv_1B + mean((pred_1B - val)^2)
+  cv_2A <- cv_2A + mean((pred_2A - val)^2)
+  cv_2B <- cv_2B + mean((pred_2B - val)^2)
+}
+cv_1A = cv_1A / 10
+cv_1B = cv_1B / 10
+cv_2A = cv_2A / 10
+cv_2B = cv_2B / 10
+```
+
+we summarize the criterion values of all the models into Table 1:
+
+```{r}
+index = c(1, 2, 3, 4)
+model = c("Expo. smoothing + ARMA 1A", "Expo. smoothing + ARMA 1B","2nd-order Diff. + ARMA 2A","2nd-order Diff. + ARMA 2B")
+cves = c(cv_1A, cv_1B, cv_2A, cv_2B)
+aic = c(model_1A$AIC,model_1B$AIC,model_2A$AIC,model_2B$AIC)
+aicc = c(model_1A$AICc,model_1B$AICc,model_2A$AICc,model_2B$AICc)
+bic = c(model_1A$BIC,model_1B$BIC,model_2A$BIC,model_2B$BIC)
+s <- data.frame(Index = index, "Model" = model, "CV error"=cves,"AIC"=aic,"AICc"=aicc,"BIC"=bic)
+knitr::kable(s, caption = "Criterion values of each model")
+```
+
+Interestingly, the models using exponential smoothing to remove the signal have higher cross-validation errors but smaller AIC, AICc, and BIC than the models using second-order differencing to remove the signal. It could be that our exponential smoothing model is more overfitting than the second-order differencing model. Because the average difference between cross-validation errors of second-order differencing models and those of exponential smoothing models is much larger than the the average difference between AIC, AICc, and BIC of two models, we will select one model from two second-order differencing models. Now, since the criterions of these two models are very close to each other, we will simply choose model 3 because it has less parameters than model 4. The choise here is somewhat arbitrary.
+
+There is a caveat that the we extract AIC, BIC, and AICc of these four models directly from their `sarima()` fitted results. However, the exponential smoothing cannot be directly involved in `sarima()` while the second-order differencing can be. This discrepancy might bias the measured criterions. For the simplicity of this project, we ignore this discrepancy, although we recommend further exploration in it.
+
+# Final Model
+
+From the model selection process, we choose second-order differencing with ARMA 2A as our final model. We will give the specific formula of our model and its prediction for future ten time points.
+
+## Model Expression
+
+To write out the formula, we denote the original time series, close price, by $\{X_t\}$ and the second-order differenced time series by $\{Z_t\}$. Then, our model has the form
+$$(1 - \phi_1B)(\nabla^2 X_t - \mu_t) = (1 + \theta_1B)W_t$$
+where $W_t\sim WN(0,\sigma^2)$ and $\mu_t$ is a constant. The estimations of the parameters are in the Table 2.  
+
+Parameters    Estimate       SE
+--------   --------------   ----------------
+$\phi_1$        -0.1085          0.0632
+$\theta_1$      -0.9520          0.0269
+$\mu_t$         0.0576           0.0677	
+---------  --------------   ----------------
+
+Table: The estimates of the model parameters
+
+```{r, include = FALSE}
+model_2A$ttable
+```
+
+## Prediction
+
+The time series plot in Figure TODO shows the predicted value (red points) of TSLA stock price for the next ten trading days from November 3 and November 16, 2021. Our model predicts an monotonically increasing trend probably because $X_t$ is monotonically increasing during the last few days as well. The gray areas are $68\%$ and $95\%$ prediction intervals respectively. 
+
+To further specify the uncertainty and error of the prediction, we collect the actual close price of Tesla on these ten days and plot them with the predictions and their prediction intervals.
+
+```{r, fig.height= 3, fig.cap="(a): The historical and predicted closed price (b): Predicted and actual close price"}
+par(mfrow = c(1, 2), cex = 0.7)
+close = stock_300$Close
+model_forecast <- sarima.for(close, n.ahead = 10, p = 1, d = 2, q = 1, 
+                        P = 0, D = 0, Q = 0, S = 0)
+title(main = "(a)")
+# compute the prediction intervals
+model_pred <- model_forecast$pred
+model_se <- model_forecast$se
+lower <- c()
+upper <- c()
+for (i in 1:10){
+  lower[i] <- model_pred[i] - 1.96 * model_se[i]
+  upper[i] <- model_pred[i] + 1.96 * model_se[i]
+}
+# collect actual data
+stock_new = read.csv("data/TSLA_new.csv")
+stock_new_true <- tail(stock_new, 10)
+stock_new_true = stock_new_true[c('Date','Close')]
+df <- data.frame(stock_new_true$Date, model_pred, stock_new_true$Close, lower, upper)
+colnames(df)=c("Time", "Prediction", "True", "Lower", "Upper")
+# plot the prediction, actual value, and prediction interval
+plot(1:10, xlab = "Time", ylab = "Stock Price ($)", ylim=c(1000,1550), main = "(b)",
+     sub = "(Nov 3, 2021 - Nov 16, 2021)",
+  # Titles in italic and bold
+  font.main=4, font.lab=4, font.sub=4,
+  # Change font size
+  cex.main=1.2, cex.lab=1, cex.sub=0.75)
+polygon(c(rev(1:10), 1:10), c(rev(df[ ,4]), df[ ,5]), col = 'grey85', border = NA)
+lines(1:10, df[ ,4], lty = 'dashed', col = 'gray')
+lines(1:10, df[ ,5], lty = 'dashed', col = 'gray')
+lines(1:10, df[ ,2], type = "l", pch = 19, col = "red")
+points(1:10, stock_new_true$Close, pch = "*", col = "blue")
+lines(1:10, stock_new_true$Close, pch = 18, col = "blue", type = "b", lty = 2)
+legend("topleft", legend=c("Prediction", "Actual"),
+       col=c("red", "blue"), lty = 1:2, cex=0.8)
+```
+
+The figure above displays the comparison between the forecasted and actual values of Tesla stock price in the analyzed period. The $95\%$ prediction interval captures first four days well. However, because the actual close price sharply decreased from day three to day five and did not increase to the original level, our predictions diviates from the true values significantly. We find out that Elon Mask announced his interest to sell ten percent of his holdings at the weekend of Nov. 6th. It might be the reason for the decrease.
+
+# Conclusion
+
+While the $ARIMA(1,2,1)\times(0,0,0)[0]$ model works the best among all the models considered, there is no guarantee that this is the true model underlying this dataset. Comparing our model prediction results to the actual stock price changes, we observe that the model has failed to to capture the the trend and fluctuations in Tesla stock price across time: in stark contrast to the overall increasing trend the model predicts, the stock price dropped after Nov 4, 2021, and had only started to go up a week ago. Even if our model is ideal from the point of view of statistical performance, it has failed to take human factor into account (in this case, Tesla stock prices slump after Elon Musk's announcement about selling 10% of his holdings in the company earlier this month). These conclusions from our time series analysis of Tesla could also apply to the overall stock market where statistical probability and human behavior are intertwined. Further analysis is necessary to consider other models for better prediction results in the long term. 
